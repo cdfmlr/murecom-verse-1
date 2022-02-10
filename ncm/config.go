@@ -1,4 +1,4 @@
-package neteasecloudmusic
+package ncm
 
 import (
 	"encoding/json"
@@ -7,12 +7,12 @@ import (
 )
 
 var Config struct {
-	Client []struct {
+	NcmClient []struct {
 		Phone       string
 		PasswordMD5 string
+		Server      string
 	} `json:"client"`
-	DB           string `json:"db"`
-	NcmApiServer string `json:"ncm_api_server"`
+	DB string `json:"db"`
 }
 
 // InitConfig read the config file

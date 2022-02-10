@@ -292,3 +292,4 @@ cython_debug/
 # Go workspace file
 go.work
 
+/ncm/neteasecloudmusic/test_config.json

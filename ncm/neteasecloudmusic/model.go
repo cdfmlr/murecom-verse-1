@@ -1,5 +1,9 @@
 package neteasecloudmusic
 
+type Resulter interface {
+	success() bool
+}
+
 // Result 似乎是所有接口都会返回有的一个值
 // TODO: 也许该给所有结构体加上 Result 的嵌入，目前只有 XxxResult 嵌入了 Result
 type Result struct {
