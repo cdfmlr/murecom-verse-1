@@ -10,6 +10,7 @@ import (
 	"strconv"
 )
 
+// API Paths
 const (
 	PathLogin          = "/login/cellphone"
 	PathTopPlaylists   = "/top/playlist"
@@ -210,15 +211,3 @@ type NcmError string
 func (n NcmError) Error() string { return string(n) }
 
 // endregion Errors
-
-// region TODO: Pool
-
-var servers []string
-
-var clientPool []client
-
-func Init(srvs []string) {
-	servers = srvs
-}
-
-// endregion Pool
