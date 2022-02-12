@@ -1,4 +1,4 @@
-package neteasecloudmusic
+package ncmapi
 
 import (
 	"errors"

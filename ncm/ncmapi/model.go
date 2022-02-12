@@ -1,4 +1,4 @@
-package neteasecloudmusic
+package ncmapi
 
 type Resulter interface {
 	success() bool

@@ -1,4 +1,4 @@
-package neteasecloudmusic
+package ncmapi
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ type Logger interface {
 	Error(s string)
 }
 
-// logger for neteasecloudmusic package
+// logger for ncmapi package
 var logger Logger = newDefaultLogger()
 
 // region defaultLogger
@@ -24,9 +24,9 @@ func newDefaultLogger() Logger {
 }
 
 // log prints a default log like this:
-//    [Level] neteasecloudmusic: something happened
+//    [Level] ncmapi: something happened
 func (l *defaultLogger) log(level string, s string) {
-	(*log.Logger)(l).Printf("[%s] neteasecloudmusic: %s\n", level, s)
+	(*log.Logger)(l).Printf("[%s] ncmapi: %s\n", level, s)
 }
 
 func (l *defaultLogger) Info(s string) {
