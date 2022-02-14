@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gorm.io/gorm"
 	"ncm/ncmapi"
+	"regexp"
 	"sync"
 )
 
@@ -37,6 +38,7 @@ type Track struct {
 	Album       *Album     `json:"al" gorm:"foreignKey:Id"`
 	PublishTime Timestamp  `json:"publishTime"`
 	Comments    []*Comment `json:"comments" gorm:"many2many:track_comments"` // hot_comments
+	Lyric       string     `json:"lyric"`                                    // 仅中文, 无则空
 }
 
 type Artist struct {
@@ -188,10 +190,15 @@ func ArtistFromNcmapi(na *ncmapi.Artist) *Artist {
 	return a
 }
 
-func (t *Track) FillCommentsFromNcmapi(comments []ncmapi.HotComment) {
+func (t *Track) FillComments(comments []ncmapi.HotComment) {
 	for _, nc := range comments {
 		t.Comments = append(t.Comments, CommentFromNcmapi(&nc))
 	}
+}
+
+func (t *Track) FillLyric(lyric *ncmapi.LyricResult) {
+	s := lyricsVersionChoose(lyric)
+	t.Lyric = lyricsFilter(s)
 }
 
 func CommentFromNcmapi(nc *ncmapi.HotComment) *Comment {
@@ -214,3 +221,33 @@ func UserFromNcmapi(nu *ncmapi.User) *User {
 }
 
 // endregion models conv from ncmapi
+
+// region lyrics preprocess
+
+// lyricsMinLen 个字以下的歌词就等于没有歌词
+const lyricsMinLen = len("[99:00.00]纯音乐，请欣赏\n")
+
+// lyricsTimelines 是歌词中时间轴的正则: [...] 或者是 (...)
+var lyricsTimelines = regexp.MustCompile(`\[.*?\]|\(.*?\)`)
+
+// lyricsFilter remove timelines
+func lyricsFilter(s string) string {
+	if len(s) <= lyricsMinLen { // 纯音乐，没歌词
+		return ""
+	}
+	return lyricsTimelines.ReplaceAllLiteralString(s, "")
+}
+
+func lyricsVersionChoose(lyrics *ncmapi.LyricResult) string {
+	if lyrics == nil {
+		return ""
+	}
+	// 有翻译: 外文歌，用中文词
+	if lyrics.Tlyric.Lyric != "" {
+		return lyrics.Tlyric.Lyric
+	}
+	// 没翻译|中文歌: 用原文
+	return lyrics.Lrc.Lyric
+}
+
+// endregion lyrics preprocess

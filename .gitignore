@@ -293,3 +293,5 @@ cython_debug/
 go.work
 
 /ncm/ncmapi/test_config.json
+/ncm/test_config.json
+/ncm/models_test_result.json
