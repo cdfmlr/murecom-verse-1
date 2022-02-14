@@ -53,7 +53,7 @@ func Test_client_login(t *testing.T) {
 
 func Test_client_Lyric(t *testing.T) {
 	type args struct {
-		id int
+		id ID
 	}
 	tests := []struct {
 		name    string
@@ -103,7 +103,7 @@ func Test_client_PlaylistDetail(t *testing.T) {
 func Test_client_PlaylistTracks(t *testing.T) {
 
 	type args struct {
-		id     int
+		id     ID
 		limit  int
 		offset int
 	}
@@ -168,7 +168,7 @@ func Test_client_TopPlaylists(t *testing.T) {
 func Test_client_TrackHotComment(t *testing.T) {
 
 	type args struct {
-		id int
+		id ID
 	}
 	tests := []struct {
 		name    string

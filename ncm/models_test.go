@@ -64,12 +64,45 @@ func TestPlaylistFromNcmapi(t *testing.T) {
 	np.Tracks = []ncmapi.Track{}
 	limit := 50
 	for offset := 0; offset*limit < np.TrackCount; offset++ {
-		ptr, err := client.PlaylistTracks(int(np.Id), limit, 0)
+		ptr, err := client.PlaylistTracks(np.Id, limit, offset)
 		if err != nil {
 			t.Errorf("Get PlaylistTracks failed (limit=%v, offset=%v): %v", limit, offset, err)
 		}
-		np.Tracks = append(np.Tracks, ptr.Songs...)
+
+		// 它每次一定会给满 limit 个数据，最后一页会给倒数 limit 个
+		// 所以可能和上一页重复，需要计算一下，重新切个片
+		// 例如 总共 26 条, limit=10:
+		//   req(limit=10, offset=0): 0~9
+		//   req(limit=10, offset=1): 10~19
+		//   req(limit=10, offset=2): 16~25
+
+		got := len(np.Tracks) + len(ptr.Songs)
+		remind := np.TrackCount - got
+
+		start := 0
+		if remind < 0 { // 最后一页：会有重复数据
+			start = len(ptr.Songs) + remind
+		}
+		np.Tracks = append(np.Tracks, ptr.Songs[start:]...)
 	}
+
+	// region Tracks tests
+
+	if np.TrackCount != len(np.Tracks) {
+		t.Errorf("❌ TrackCount=%v, len(Tracks)=%v", np.TrackCount, len(np.Tracks))
+	}
+	trackSet := make(map[int64]struct{})
+	for _, tk := range np.Tracks {
+		if _, exist := trackSet[tk.Id]; exist {
+			t.Errorf("❌ Duplicated track: %v - %v", tk.Id, tk.Name)
+		}
+		trackSet[tk.Id] = struct{}{}
+	}
+	if len(trackSet) != len(np.Tracks) {
+		t.Errorf("❌ len(Tracks)=%v, len(tracksSet)=%v", len(np.Tracks), len(trackSet))
+	}
+
+	// endregion Tracks tests
 
 	// local model
 	playlist := PlaylistFromNcmapi(&np)
@@ -77,7 +110,7 @@ func TestPlaylistFromNcmapi(t *testing.T) {
 	// Lyrics
 	t.Log("🚚 Lyrics")
 	for _, tk := range playlist.Tracks {
-		lr, err := client.Lyric(int(tk.Id))
+		lr, err := client.Lyric(tk.Id)
 		if err != nil {
 			t.Errorf("Get lyrics (%v: %v) failed: %v", tk.Id, tk.Name, err)
 		}
@@ -87,7 +120,7 @@ func TestPlaylistFromNcmapi(t *testing.T) {
 	// Comments
 	t.Log("🚚 Comments")
 	for _, tk := range playlist.Tracks {
-		cr, err := client.TrackHotComment(int(tk.Id))
+		cr, err := client.TrackHotComment(tk.Id)
 		if err != nil {
 			t.Errorf("Get TrackHotComment (%v: %v) failed: %v", tk.Id, tk.Name, err)
 		}

@@ -148,8 +148,7 @@ func PlaylistFromNcmapi(np *ncmapi.Playlist) *Playlist {
 		Tracks:          []*Track{},
 	}
 	for i, nt := range np.Tracks {
-		// TODO(ncmapi): ID 改成全用 int64 比较保险，也省得到处 cast
-		ptNoStore(np.Id, int64(nt.Id), i)
+		ptNoStore(np.Id, nt.Id, i)
 		p.Tracks = append(p.Tracks, TrackFromNcmapi(&nt))
 	}
 	return p
@@ -157,7 +156,7 @@ func PlaylistFromNcmapi(np *ncmapi.Playlist) *Playlist {
 
 func TrackFromNcmapi(nt *ncmapi.Track) *Track {
 	t := &Track{
-		Id:          int64(nt.Id),
+		Id:          nt.Id,
 		Name:        nt.Name,
 		Artists:     []*Artist{},
 		Pop:         nt.Pop,
@@ -175,7 +174,7 @@ func TrackFromNcmapi(nt *ncmapi.Track) *Track {
 
 func AlbumFromNcmapi(na *ncmapi.Album) *Album {
 	a := &Album{
-		Id:     int64(na.Id),
+		Id:     na.Id,
 		Name:   na.Name,
 		PicUrl: na.PicUrl,
 	}
@@ -184,7 +183,7 @@ func AlbumFromNcmapi(na *ncmapi.Album) *Album {
 
 func ArtistFromNcmapi(na *ncmapi.Artist) *Artist {
 	a := &Artist{
-		Id:   int64(na.Id),
+		Id:   na.Id,
 		Name: na.Name,
 	}
 	return a
