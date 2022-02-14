@@ -1,5 +1,7 @@
 package ncmapi
 
+// region result
+
 type Resulter interface {
 	success() bool
 }
@@ -16,6 +18,10 @@ func (r Result) success() bool {
 	return r.Code == CodeOK
 }
 
+// endregion result
+
+type ID = int64
+
 // region API results: 各种 API 请求返回的东西
 
 // XXX: 注意那些我样本里面 null 或者是 {} 的，类型给留了 interface{}
@@ -29,21 +35,21 @@ type LoginResult struct {
 	Token     string  `json:"token"`
 	Profile   Profile `json:"profile"`
 	Bindings  []struct {
-		UserId       int64  `json:"userId"`
+		UserId       ID     `json:"userId"`
 		Url          string `json:"url"`
 		Expired      bool   `json:"expired"`
 		BindingTime  int64  `json:"bindingTime"`
 		TokenJsonStr string `json:"tokenJsonStr"`
 		ExpiresIn    int    `json:"expiresIn"`
 		RefreshTime  int    `json:"refreshTime"`
-		Id           int64  `json:"id"`
+		Id           ID     `json:"id"`
 		Type         int    `json:"type"`
 	} `json:"bindings"`
 	Cookie string `json:"cookie"`
 }
 
 type Account struct {
-	Id                 int64  `json:"id"`
+	Id                 ID     `json:"id"`
 	UserName           string `json:"userName"`
 	Type               int    `json:"type"`
 	Status             int    `json:"status"`
@@ -66,7 +72,7 @@ type Profile struct {
 	DetailDescription         string      `json:"detailDescription"`
 	BackgroundImgIdStr        string      `json:"backgroundImgIdStr"`
 	AvatarImgIdStr            string      `json:"avatarImgIdStr"`
-	UserId                    int64       `json:"userId"`
+	UserId                    ID          `json:"userId"`
 	UserType                  int         `json:"userType"`
 	AccountStatus             int         `json:"accountStatus"`
 	VipType                   int         `json:"vipType"`
@@ -174,7 +180,7 @@ type Playlist struct {
 	RecommendInfo interface{} `json:"recommendInfo"`
 	Alg           string      `json:"alg"`
 	// from /playlist/detail
-	Id                    int64       `json:"id"`
+	Id                    ID          `json:"id"`
 	Name                  string      `json:"name"`
 	CoverImgId            int64       `json:"coverImgId"`
 	CoverImgUrl           string      `json:"coverImgUrl"`
@@ -221,7 +227,7 @@ type Playlist struct {
 }
 
 type TrackIDs struct {
-	Id         int         `json:"id"`
+	Id         ID          `json:"id"`
 	V          int         `json:"v"`
 	T          int         `json:"t"`
 	At         int64       `json:"at"`
@@ -236,7 +242,7 @@ type Track struct {
 	// from /playlist/detail
 	// from /playlist/track/all
 	Name                 string        `json:"name"`
-	Id                   int           `json:"id"`
+	Id                   ID            `json:"id"`
 	Pst                  int           `json:"pst"`
 	T                    int           `json:"t"`
 	Ar                   []Artist      `json:"ar"`
@@ -282,7 +288,7 @@ type Track struct {
 
 // Artist 是 Track 中的艺人信息
 type Artist struct {
-	Id    int           `json:"id"`
+	Id    ID            `json:"id"`
 	Name  string        `json:"name"`
 	Tns   []interface{} `json:"tns"`
 	Alias []interface{} `json:"alias"`
@@ -290,7 +296,7 @@ type Artist struct {
 
 // Album 是 Track 中的专辑信息
 type Album struct {
-	Id     int           `json:"id"`
+	Id     ID            `json:"id"`
 	Name   string        `json:"name"`
 	PicUrl string        `json:"picUrl"`
 	Tns    []interface{} `json:"tns"`
@@ -300,10 +306,10 @@ type Album struct {
 
 // Quality 是 Track 中的品质信息：有 H、M、L（可能 A 也是）
 type Quality struct {
-	Br   int `json:"br"` // 比特率: e.g. 320000
-	Fid  int `json:"fid"`
-	Size int `json:"size"` // 文件大小 e.g. 4024990
-	Vd   int `json:"vd"`
+	Br   int     `json:"br"` // 比特率: e.g. 320000
+	Fid  int     `json:"fid"`
+	Size int     `json:"size"` // 文件大小 e.g. 4024990
+	Vd   float32 `json:"vd"`
 }
 
 // PlaylistDetailResult 歌单详情 /playlist/detail
@@ -318,7 +324,7 @@ type PlaylistDetailResult struct {
 }
 
 type Privileges struct {
-	Id                 int         `json:"id"`
+	Id                 ID          `json:"id"`
 	Fee                int         `json:"fee"`
 	Payed              int         `json:"payed"`
 	RealPayed          int         `json:"realPayed"`
@@ -378,7 +384,7 @@ type HotComment struct {
 		ExpressionUrl      interface{} `json:"expressionUrl"`
 	} `json:"beReplied"`
 	PendantData *struct {
-		Id       int    `json:"id"`
+		Id       ID     `json:"id"`
 		ImageUrl string `json:"imageUrl"`
 	} `json:"pendantData"`
 	ShowFloorComment    interface{} `json:"showFloorComment"`
@@ -422,10 +428,12 @@ type Lyric struct {
 
 // LyricUser 贡献歌词的用户
 type LyricUser struct {
-	Id       int    `json:"id"`
+	Id       ID     `json:"id"`
 	Status   int    `json:"status"`
 	Demand   int    `json:"demand"`
 	Userid   int    `json:"userid"`
 	Nickname string `json:"nickname"`
 	Uptime   int64  `json:"uptime"`
 }
+
+// endregion API results: 各种 API 请求返回的东西

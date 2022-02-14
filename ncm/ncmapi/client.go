@@ -23,10 +23,10 @@ const (
 type Client interface {
 	login() (*LoginResult, error)
 	TopPlaylists(limit, offset int) (*TopPlaylistsResult, error)
-	PlaylistDetail(id int64) (*PlaylistDetailResult, error)
-	PlaylistTracks(id int, limit, offset int) (*PlaylistTracksResult, error)
-	TrackHotComment(id int) (*HotCommentsResult, error)
-	Lyric(id int) (*LyricResult, error)
+	PlaylistDetail(id ID) (*PlaylistDetailResult, error)
+	PlaylistTracks(id ID, limit, offset int) (*PlaylistTracksResult, error)
+	TrackHotComment(id ID) (*HotCommentsResult, error)
+	Lyric(id ID) (*LyricResult, error)
 }
 
 type client struct {
@@ -147,7 +147,7 @@ func (c *client) TopPlaylists(limit, offset int) (*TopPlaylistsResult, error) {
 	return &result, err
 }
 
-func (c *client) PlaylistDetail(id int64) (*PlaylistDetailResult, error) {
+func (c *client) PlaylistDetail(id ID) (*PlaylistDetailResult, error) {
 	apiUrl := c.apiUrl(PathPlaylistDetail)
 
 	params := url.Values{}
@@ -159,11 +159,11 @@ func (c *client) PlaylistDetail(id int64) (*PlaylistDetailResult, error) {
 	return &result, err
 }
 
-func (c *client) PlaylistTracks(id int, limit, offset int) (*PlaylistTracksResult, error) {
+func (c *client) PlaylistTracks(id ID, limit, offset int) (*PlaylistTracksResult, error) {
 	apiUrl := c.apiUrl(PathPlaylistTracks)
 
 	params := url.Values{}
-	params.Set("id", strconv.Itoa(id))
+	params.Set("id", strconv.FormatInt(id, 10))
 	params.Set("limit", strconv.Itoa(limit))
 	params.Set("offset", strconv.Itoa(offset))
 
@@ -173,11 +173,11 @@ func (c *client) PlaylistTracks(id int, limit, offset int) (*PlaylistTracksResul
 	return &result, err
 }
 
-func (c *client) TrackHotComment(id int) (*HotCommentsResult, error) {
+func (c *client) TrackHotComment(id ID) (*HotCommentsResult, error) {
 	apiUrl := c.apiUrl(PathHotComment)
 
 	params := url.Values{}
-	params.Set("id", strconv.Itoa(id))
+	params.Set("id", strconv.FormatInt(id, 10))
 	params.Set("type", "0") // const type=0 means "comment of track"
 
 	result := HotCommentsResult{}
@@ -186,11 +186,11 @@ func (c *client) TrackHotComment(id int) (*HotCommentsResult, error) {
 	return &result, err
 }
 
-func (c *client) Lyric(id int) (*LyricResult, error) {
+func (c *client) Lyric(id ID) (*LyricResult, error) {
 	apiUrl := c.apiUrl(PathLyric)
 
 	params := url.Values{}
-	params.Set("id", strconv.Itoa(id))
+	params.Set("id", strconv.FormatInt(id, 10))
 
 	result := LyricResult{}
 
