@@ -8,9 +8,9 @@ import (
 
 var Config struct {
 	NcmClient []struct {
-		Phone       string
-		PasswordMD5 string
-		Server      string
+		Phone       string `json:"phone"`
+		PasswordMD5 string `json:"password_md5"`
+		Server      string `json:"server"`
 	} `json:"client"`
 	DB string `json:"db"`
 }

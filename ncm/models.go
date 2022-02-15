@@ -5,6 +5,7 @@ import (
 	"gorm.io/gorm"
 	"ncm/ncmapi"
 	"regexp"
+	"strings"
 	"sync"
 )
 
@@ -13,11 +14,11 @@ import (
 // region Models
 
 type Playlist struct {
-	Id          int64    `json:"id" gorm:"primaryKey"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Tags        []string `json:"tags"`
-	CoverImgUrl string   `json:"coverImgUrl"`
+	Id          int64  `json:"id" gorm:"primaryKey"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Tags        string `json:"tags"` // "tags":["快乐","放松","夜晚"] => "快乐,放松,夜晚"
+	CoverImgUrl string `json:"coverImgUrl"`
 
 	UpdateTime      Timestamp `json:"updateTime"`      // meta data
 	TrackUpdateTime Timestamp `json:"trackUpdateTime"` // tracks
@@ -35,7 +36,7 @@ type Track struct {
 	Name        string     `json:"name"`
 	Artists     []*Artist  `json:"ar" gorm:"many2many:track_artists"`
 	Pop         int        `json:"pop"`
-	Album       *Album     `json:"al" gorm:"foreignKey:Id"`
+	Album       []*Album   `json:"al" gorm:"many2many:track_albums"`
 	PublishTime Timestamp  `json:"publishTime"`
 	Comments    []*Comment `json:"comments" gorm:"many2many:track_comments"` // hot_comments
 	Lyric       string     `json:"lyric"`                                    // 仅中文, 无则空
@@ -82,8 +83,6 @@ type PlaylistTrack struct {
 	TrackId    int64 `gorm:"primaryKey"`
 	No         int   // index of track in playlist
 }
-
-// TODO(DB.Init): db.SetupJoinTable(&Playlist{}, "Tracks", &PlaylistTrack{})
 
 // BeforeSave assigns pt.No, by loading it from tmpPlaylistTrackNo.
 func (pt *PlaylistTrack) BeforeSave(tx *gorm.DB) (err error) {
@@ -138,7 +137,7 @@ func PlaylistFromNcmapi(np *ncmapi.Playlist) *Playlist {
 		Id:              np.Id,
 		Name:            np.Name,
 		Description:     np.Description,
-		Tags:            np.Tags,
+		Tags:            tagsToString(np.Tags),
 		CoverImgUrl:     np.CoverImgUrl,
 		UpdateTime:      np.UpdateTime,
 		TrackUpdateTime: np.TrackUpdateTime,
@@ -154,13 +153,18 @@ func PlaylistFromNcmapi(np *ncmapi.Playlist) *Playlist {
 	return p
 }
 
+// ["快乐","放松","夜晚"] => "快乐,放松,夜晚"
+func tagsToString(tags []string) string {
+	return strings.Join(tags, ",")
+}
+
 func TrackFromNcmapi(nt *ncmapi.Track) *Track {
 	t := &Track{
 		Id:          nt.Id,
 		Name:        nt.Name,
 		Artists:     []*Artist{},
 		Pop:         nt.Pop,
-		Album:       AlbumFromNcmapi(&nt.Al),
+		Album:       []*Album{AlbumFromNcmapi(&nt.Al)},
 		PublishTime: nt.PublishTime,
 		Comments:    []*Comment{},
 	}

@@ -7,31 +7,21 @@ import (
 	"testing"
 )
 
-// TODO: test modelsconv
-
-func _loadTestConfig() (config map[string]string) {
-	config = map[string]string{}
-	file, err := os.Open("test_config.json")
-	if err != nil {
-		panic(err)
-	}
-	err = json.NewDecoder(file).Decode(&config)
-	if err != nil {
-		panic(err)
-	}
-	return config
-}
-
 // 测试转化函数的同时，也测试 ncmapi 包外部访问。
 // 还作为一的 Demo, 获取并转化一个播放列表。
 func TestPlaylistFromNcmapi(t *testing.T) {
+	InitConfig("test_config.json")
+	config := Config.NcmClient[0]
+	if config.Server == "" {
+		t.Fatal("❌ No config!")
+	}
+
 	// ncmapi Init
 	t.Log("🚚 ncmapi.Init")
-	config := _loadTestConfig()
 	err := ncmapi.Init([]ncmapi.ClientConfig{{
-		Phone:       config["phone"],
-		PasswordMD5: config["md5_password"],
-		Server:      config["server"]}}, nil)
+		Phone:       config.Phone,
+		PasswordMD5: config.PasswordMD5,
+		Server:      config.Server}}, nil)
 	if err != nil {
 		t.Fatal("ncmapi Init failed:", err)
 	}
@@ -132,5 +122,10 @@ func TestPlaylistFromNcmapi(t *testing.T) {
 	fname := "models_test_result.json"
 	result, _ := json.Marshal(playlist)
 	_ = os.WriteFile(fname, result, 0600)
-	t.Log("✅ result playlist:", fname)
+	t.Logf("✅ result playlist @ %#v: name=%#v, tracks=%v.", fname, playlist.Name, playlist.TrackCount)
+	var trackNames []string
+	for _, tk := range playlist.Tracks {
+		trackNames = append(trackNames, tk.Name)
+	}
+	t.Logf("✅ tracks: %#v", trackNames)
 }
