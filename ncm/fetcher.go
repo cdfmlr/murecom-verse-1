@@ -11,14 +11,19 @@ import (
 )
 
 const (
-	TopPlaylistPagingLimit  = 35
-	TopPlaylistBufferSize   = 10
-	TracksPagingLimit       = 50
+	TopPlaylistPagingLimit = 35
+	TopPlaylistBufferSize  = 10
+	TracksPagingLimit      = 50
+
 	PlaylistWorksTimeoutSec = 600
 	TrackWorksTimeoutSec    = 60
-	TrackWorksGoroutine     = 12
-	TaskWorksGap            = 10 // 每弄完这么多的列表，停下来休息一下
-	ErrorSleepSec           = 2  // 出错了停下来等几秒，ncm api server 可能要重启
+
+	TrackWorksGoroutine = 12
+	TaskWorksGap        = 10 // 每弄完这么多的列表，停下来休息一下
+
+	Retries            = 3 // 重试次数
+	ErrorSleepSec      = 3 // 出错了停下来等几秒，ncm api server 可能要重启
+	ErrorSleepDuration = ErrorSleepSec * time.Second
 )
 
 // FetchTopPlaylists request TopPlaylists API, yields ncmapi.Playlist.
@@ -39,9 +44,15 @@ func FetchTopPlaylists(ctx context.Context, client ncmapi.Client, catalog string
 			default:
 			}
 			// Request API
-			tpr, err := client.TopPlaylistsCatalog(catalog, TopPlaylistPagingLimit, count) // 这个的 offset 是几就是从第几个开始
+			var tpr *ncmapi.TopPlaylistsResult
+			var err error
+
+			err = doWithRetries("FetchTopPlaylists", Retries, ErrorSleepDuration, func() error {
+				tpr, err = client.TopPlaylistsCatalog(catalog, TopPlaylistPagingLimit, count) // 这个的 offset 是几就是从第几个开始
+				return err
+			})
 			if err != nil {
-				logger.Warn("FetchTopPlaylists failed, skip:", err)
+				logger.Error("FetchTopPlaylists failed, skip:", err)
 				continue
 			}
 
@@ -93,7 +104,13 @@ func FetchTracks(ctx context.Context, client ncmapi.Client, pid int64, trackCoun
 			default:
 			}
 
-			ptr, err := client.PlaylistTracks(pid, TracksPagingLimit, offset)
+			var ptr *ncmapi.PlaylistTracksResult
+			var err error
+
+			err = doWithRetries("FetchTracks", Retries, ErrorSleepDuration, func() error {
+				ptr, err = client.PlaylistTracks(pid, TracksPagingLimit, offset)
+				return err
+			})
 			if err != nil {
 				logger.Error("FetchTracks failed: ", fmt.Sprintf("pid=%v, err=%v", pid, err.Error()))
 				return
@@ -138,15 +155,10 @@ func FetchLyrics(ctx context.Context, client ncmapi.Client, tid int64) <-chan nc
 		var lr *ncmapi.LyricResult
 		var err error
 
-		for retry := 0; retry < 3; retry++ {
+		err = doWithRetries("FetchLyrics", Retries, ErrorSleepDuration, func() error {
 			lr, err = client.Lyric(tid)
-			if err != nil {
-				logger.Warn("FetchLyrics failed, wait & retry:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
-				time.Sleep(ErrorSleepSec * time.Second)
-			} else {
-				break
-			}
-		}
+			return err
+		})
 		if err != nil {
 			logger.Error("FetchLyrics failed, use zero value:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
 		}
@@ -171,15 +183,10 @@ func FetchComments(ctx context.Context, client ncmapi.Client, tid int64) <-chan 
 
 		var cr *ncmapi.HotCommentsResult
 		var err error
-		for retry := 0; retry < 3; retry++ {
+		err = doWithRetries("FetchComments", Retries, ErrorSleepDuration, func() error {
 			cr, err = client.TrackHotComment(tid)
-			if err != nil {
-				logger.Warn("FetchComments failed, wait & retry:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
-				time.Sleep(ErrorSleepSec * time.Second)
-			} else {
-				break
-			}
-		}
+			return err
+		})
 		if err != nil {
 			logger.Error("FetchLyrics failed, use zero value:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
 		}
@@ -430,6 +437,8 @@ func Master() {
 	}
 }
 
+// region helpers
+
 func logTaskProgress(catalog string, count, max int, task int, msg string) {
 	//p := (task*max + count) * 100 / (max * len(Config.Catalogs))
 	//logger.Info(fmt.Sprintf(
@@ -453,3 +462,25 @@ func slowdown() {
 		time.Sleep(time.Second)
 	}
 }
+
+// doWithRetries 做 f 失败了睡 sleep 后重试，最多重试 retries 次。
+// name 是用来打日志的，空则沉默工作。
+// 小实验: https://go.dev/play/p/d-rAGWOSApC
+func doWithRetries(name string, retries int, sleep time.Duration, f func() error) error {
+	var err error
+
+	for retry := 0; retry < retries; retry++ {
+		err = f()
+		if err != nil {
+			if name != "" {
+				logger.Warn(fmt.Sprintf("%v failed, wait %v and retry: %v", name, sleep, err))
+			}
+			time.Sleep(sleep)
+		} else { // err == nil: success
+			break
+		}
+	}
+	return err
+}
+
+// endregion helpers
