@@ -18,6 +18,7 @@ const (
 	TrackWorksTimeoutSec    = 60
 	TrackWorksGoroutine     = 12
 	TaskWorksGap            = 10 // 每弄完这么多的列表，停下来休息一下
+	ErrorSleepSec           = 15 // 出错了停下来等 15 秒，ncm api server 可能要重启
 )
 
 // FetchTopPlaylists request TopPlaylists API, yields ncmapi.Playlist.
@@ -214,12 +215,39 @@ func PlaylistWorks(ctx context.Context, client ncmapi.Client, np *ncmapi.Playlis
 	// lyrics and comments for each track
 	wg := sync.WaitGroup{}
 
+	var flagErr struct {
+		errCount int
+		sync.Mutex
+	}
+
 	for i, t := range p.Tracks {
+		// 这个 select 里面做各种 cancel, wait, slowdown。
+		// 都是辅助。主要的工作从下面的 wg.Add 开始。
 		select {
 		case <-ctx.Done():
 			logger.Debug("PlaylistWorks=>TrackWorks: context canceled, returns early: ", ctx.Err().Error())
 			return errors.New("context canceled" + ctx.Err().Error())
 		default:
+			// region error handle
+			e := 0
+			flagErr.Lock()
+			e = flagErr.errCount
+			flagErr.Unlock()
+
+			if e > 0 { // 可能错了，有没拿到歌词或者评论的
+				wg.Wait()
+
+				if e > (TrackWorksGoroutine / 2) { // 错太多了。小心点
+					logger.Warn(fmt.Sprintf("PlaylistWorks: results seems not good: wait %v seconds. Please check the server!", ErrorSleepSec))
+					time.Sleep(ErrorSleepSec * time.Second)
+				}
+
+				flagErr.Lock()
+				flagErr.errCount = 0
+				flagErr.Unlock()
+			}
+			// endregion error handle
+
 			if i%TrackWorksGoroutine == 0 {
 				wg.Wait()
 			} else {
@@ -230,8 +258,14 @@ func PlaylistWorks(ctx context.Context, client ncmapi.Client, np *ncmapi.Playlis
 		wg.Add(1)
 		t := t
 		go func() {
-			_ = TrackWorks(ctx, client, t)
-			wg.Done()
+			defer wg.Done()
+
+			err := TrackWorks(ctx, client, t)
+			if err != nil {
+				flagErr.Lock()
+				flagErr.errCount++
+				flagErr.Unlock()
+			}
 		}()
 	}
 
@@ -264,19 +298,27 @@ func TrackWorks(ctx context.Context, client ncmapi.Client, t *Track) error {
 	chLyrics := FetchLyrics(ctx, client, t.Id)
 	chComments := FetchComments(ctx, client, t.Id)
 
+	var err error = nil
+
 	for i := 0; i < 2; i++ {
 		select {
 		case <-ctx.Done():
 			logger.Debug("TrackWorks: context canceled, returns early: ", ctx.Err().Error())
 			return errors.New("context canceled" + ctx.Err().Error())
 		case lyrics := <-chLyrics:
+			if lyrics.Code == 0 {
+				err = errors.New("zero lyrics")
+			}
 			t.FillLyric(&lyrics)
 		case comments := <-chComments:
+			if comments == nil || len(comments) == 0 {
+				err = errors.New("zero comments")
+			}
 			t.FillComments(comments)
 		}
 	}
 
-	return nil
+	return err
 }
 
 // Task 统筹安排从 FetchTopPlaylists 到 PlaylistWorks 到 TracksWorks 的一系列工作，

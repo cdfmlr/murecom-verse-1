@@ -23,7 +23,7 @@ func main() {
 	}
 
 	// init
-	InitConfig("test_config.json")
+	InitConfig("config.json")
 	// ncmapi Init
 	err := ncmapi.Init(NcmapiConfigs(), ncmapiLogger{logger})
 	if err != nil {
