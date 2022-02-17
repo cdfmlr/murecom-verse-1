@@ -16,13 +16,9 @@ const (
 	TracksPagingLimit       = 50
 	PlaylistWorksTimeoutSec = 600
 	TrackWorksTimeoutSec    = 60
-	TrackWorksGoroutine     = 16
+	TrackWorksGoroutine     = 12
+	TaskWorksGap            = 10 // 每弄完这么多的列表，停下来休息一下
 )
-
-var ProgressCount = 1
-
-// TODO: /top/playlist 还支持各种分类的，可以支持一下
-//  https://binaryify.github.io/NeteaseCloudMusicApi/#/?id=歌单-网友精选碟-
 
 // FetchTopPlaylists request TopPlaylists API, yields ncmapi.Playlist.
 // 一次给一个, bufferSize=TopPlaylistPagingLimit, 完了 close
@@ -285,23 +281,21 @@ func TrackWorks(ctx context.Context, client ncmapi.Client, t *Track) error {
 
 // Task 统筹安排从 FetchTopPlaylists 到 PlaylistWorks 到 TracksWorks 的一系列工作，
 // 完成对 catalog 分类的爬取工作。
-func Task(catalog string) {
+// n: 第几个工作，为了打日志好看
+func Task(catalog string, n int) {
 	// 最大值，设置打印进度
 	max := Config.MaxPlaylists
-	if max >= 100 {
-		ProgressCount = max / 100
-	}
 
 	// log tasks
-	logger.Info(fmt.Sprintf("NCM Task: catalogs=%q, max_playlists=%v (±%v)",
-		catalog, max, TopPlaylistBufferSize))
+	logger.Info(fmt.Sprintf("NCM Task %v: catalogs=%q, max_playlists=%v (±%v)",
+		n, catalog, max, TopPlaylistBufferSize))
 
 	// context to cancel works
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// 计数器
-	chCount := make(chan struct{}, TopPlaylistBufferSize)
+	chCount := make(chan string, TopPlaylistBufferSize)
 	defer close(chCount)
 
 	// 暂停等待
@@ -310,15 +304,15 @@ func Task(catalog string) {
 	// 计数器工作
 	go func() {
 		count := 0 // 已获取计数
-		for range chCount {
+		for s := range chCount {
 			count += 1
-			if count%ProgressCount == 0 {
-				logProgress(count, max)
-			}
+			logTaskProgress(catalog, count, max, n, s)
+
 			if count >= max {
 				logger.Info(fmt.Sprintf("task (%q): count=max: cancel contexts and return", catalog))
 				cancel()
-			} else if count%ProgressCount == 0 {
+			} else if count%TaskWorksGap == 0 {
+				logger.Debug(fmt.Sprintf("TaskWorksGap (after %v playlists): wait works done and have a rest.", TaskWorksGap))
 				chWait <- struct{}{}
 			}
 		}
@@ -342,6 +336,9 @@ LOOP:
 			return
 		case <-chWait:
 			wg.Wait()
+			for i := 0; i < 3; i++ {
+				slowdown()
+			}
 		default:
 			slowdown()
 		}
@@ -369,7 +366,8 @@ LOOP:
 			err := PlaylistWorks(ctx, c, &np)
 
 			if err == nil { // success
-				chCount <- struct{}{}
+				msg := fmt.Sprintf("%v <%v>", np.Id, np.Name)
+				chCount <- msg
 			}
 			wg.Done()
 		}()
@@ -383,17 +381,23 @@ func Master() {
 		"NCM Master Tasks:\n\t catalogs=%q\n\t max %v playlists for each catalog.\n\t Good luck!",
 		Config.Catalogs, Config.MaxPlaylists))
 
-	for _, catalog := range Config.Catalogs {
-		Task(catalog)
-	}
+	for i, catalog := range Config.Catalogs {
+		Task(catalog, i)
 
-	logger.Info("NCM Master: Done.")
+		//logger.Info(fmt.Sprintf("NCM Master: %v%% (%v/%v) tasks done.",
+		//	(i+1)*100/len(Config.Catalogs), i+1, len(Config.Catalogs)))
+		logger.Progress(i+1, len(Config.Catalogs),
+			fmt.Sprintf("NCM Master: %v/%v tasks done.", i+1, len(Config.Catalogs)))
+	}
 }
 
-func logProgress(count, max int) {
-	logger.Info(fmt.Sprintf(
-		"progress %v%%: got %v/%v playlists.",
-		count*100/max, count, max))
+func logTaskProgress(catalog string, count, max int, task int, msg string) {
+	//p := (task*max + count) * 100 / (max * len(Config.Catalogs))
+	//logger.Info(fmt.Sprintf(
+	//	"%v%%: got playlist: %v (%v/%v of %q)",
+	//	p, msg, count, max, catalog))
+	logger.Progress(task*max+count, max*len(Config.Catalogs),
+		fmt.Sprintf("got playlist: %v (%v/%v of %q)", msg, count, max, catalog))
 }
 
 func slowdown() {

@@ -34,6 +34,11 @@ func (l *Logger) Debug(a ...interface{}) {
 	}
 }
 
+func (l *Logger) Progress(done, all int, a ...interface{}) {
+	p := done * 100 / all
+	l.log(callDepth, fmt.Sprintf("Progress %v%%", p), a...)
+}
+
 var logger Logger
 
 func init() {
