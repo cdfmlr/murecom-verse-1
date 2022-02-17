@@ -16,7 +16,7 @@ var Config struct {
 	} `json:"client"`
 	DB           string   `json:"db"`
 	MaxPlaylists int      `json:"max_playlists"` // 对 Catalogs 中的每一项最多爬 MaxPlaylists 张: default 1000
-	MaxTracks    int      `json:"max_tracks"`    // 一张播放列表中最多爬几首歌，默认(≤0): 不限制(MaxInt)
+	MaxTracks    int      `json:"max_tracks"`    // 一张播放列表中最多爬几首歌，默认(≤0): 不限制(MaxInt)，但一张列表最多搞 10 分钟，搞不完会 cancel 掉
 	Speed        int      `json:"speed"`         // ±200, 正慢负快
 	Profile      string   `json:"profile"`       // 放 profile 结果的目录
 	Catalogs     []string `json:"catalogs"`      // 若为空，遍历所有已知的: ncmapi.AllTopPlaylistsCatalogs
