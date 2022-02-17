@@ -18,7 +18,7 @@ const (
 	TrackWorksTimeoutSec    = 60
 	TrackWorksGoroutine     = 12
 	TaskWorksGap            = 10 // 每弄完这么多的列表，停下来休息一下
-	ErrorSleepSec           = 15 // 出错了停下来等 15 秒，ncm api server 可能要重启
+	ErrorSleepSec           = 2  // 出错了停下来等几秒，ncm api server 可能要重启
 )
 
 // FetchTopPlaylists request TopPlaylists API, yields ncmapi.Playlist.
@@ -134,10 +134,21 @@ func FetchLyrics(ctx context.Context, client ncmapi.Client, tid int64) <-chan nc
 			return
 		default:
 		}
-		lr, err := client.Lyric(tid)
+
+		var lr *ncmapi.LyricResult
+		var err error
+
+		for retry := 0; retry < 3; retry++ {
+			lr, err = client.Lyric(tid)
+			if err != nil {
+				logger.Warn("FetchLyrics failed, wait & retry:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
+				time.Sleep(ErrorSleepSec * time.Second)
+			} else {
+				break
+			}
+		}
 		if err != nil {
-			logger.Warn("FetchLyrics failed, use zero value:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
-			slowdown()
+			logger.Error("FetchLyrics failed, use zero value:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
 		}
 		ch <- *lr
 	}()
@@ -157,11 +168,22 @@ func FetchComments(ctx context.Context, client ncmapi.Client, tid int64) <-chan 
 			return
 		default:
 		}
-		cr, err := client.TrackHotComment(tid)
-		if err != nil {
-			logger.Warn("FetchComments failed, use zero value:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
-			slowdown()
+
+		var cr *ncmapi.HotCommentsResult
+		var err error
+		for retry := 0; retry < 3; retry++ {
+			cr, err = client.TrackHotComment(tid)
+			if err != nil {
+				logger.Warn("FetchComments failed, wait & retry:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
+				time.Sleep(ErrorSleepSec * time.Second)
+			} else {
+				break
+			}
 		}
+		if err != nil {
+			logger.Error("FetchLyrics failed, use zero value:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
+		}
+
 		ch <- cr.HotComments
 	}()
 
@@ -215,11 +237,6 @@ func PlaylistWorks(ctx context.Context, client ncmapi.Client, np *ncmapi.Playlis
 	// lyrics and comments for each track
 	wg := sync.WaitGroup{}
 
-	var flagErr struct {
-		errCount int
-		sync.Mutex
-	}
-
 	for i, t := range p.Tracks {
 		// 这个 select 里面做各种 cancel, wait, slowdown。
 		// 都是辅助。主要的工作从下面的 wg.Add 开始。
@@ -228,26 +245,6 @@ func PlaylistWorks(ctx context.Context, client ncmapi.Client, np *ncmapi.Playlis
 			logger.Debug("PlaylistWorks=>TrackWorks: context canceled, returns early: ", ctx.Err().Error())
 			return errors.New("context canceled" + ctx.Err().Error())
 		default:
-			// region error handle
-			e := 0
-			flagErr.Lock()
-			e = flagErr.errCount
-			flagErr.Unlock()
-
-			if e > 0 { // 可能错了，有没拿到歌词或者评论的
-				wg.Wait()
-
-				if e > (TrackWorksGoroutine / 2) { // 错太多了。小心点
-					logger.Warn(fmt.Sprintf("PlaylistWorks: results seems not good: wait %v seconds. Please check the server!", ErrorSleepSec))
-					time.Sleep(ErrorSleepSec * time.Second)
-				}
-
-				flagErr.Lock()
-				flagErr.errCount = 0
-				flagErr.Unlock()
-			}
-			// endregion error handle
-
 			if i%TrackWorksGoroutine == 0 {
 				wg.Wait()
 			} else {
@@ -259,13 +256,7 @@ func PlaylistWorks(ctx context.Context, client ncmapi.Client, np *ncmapi.Playlis
 		t := t
 		go func() {
 			defer wg.Done()
-
-			err := TrackWorks(ctx, client, t)
-			if err != nil {
-				flagErr.Lock()
-				flagErr.errCount++
-				flagErr.Unlock()
-			}
+			_ = TrackWorks(ctx, client, t)
 		}()
 	}
 
@@ -426,10 +417,16 @@ func Master() {
 	for i, catalog := range Config.Catalogs {
 		Task(catalog, i)
 
+		// 休息一下哦，任务越多休息越久，防被 ban ip
+		rest := time.Duration(len(Config.Catalogs)) * 5 * time.Second
+
 		//logger.Info(fmt.Sprintf("NCM Master: %v%% (%v/%v) tasks done.",
 		//	(i+1)*100/len(Config.Catalogs), i+1, len(Config.Catalogs)))
 		logger.Progress(i+1, len(Config.Catalogs),
-			fmt.Sprintf("NCM Master: %v/%v tasks done.", i+1, len(Config.Catalogs)))
+			fmt.Sprintf("NCM Master: %v/%v tasks done. (take a rest: %v)",
+				i+1, len(Config.Catalogs), rest))
+
+		time.Sleep(rest)
 	}
 }
 
