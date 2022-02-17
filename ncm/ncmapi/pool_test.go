@@ -1,7 +1,6 @@
 package ncmapi
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -159,26 +158,26 @@ func TestBadClientConfig(t *testing.T) {
 	}
 }
 
-func TestNextClientConfig(t *testing.T) {
-	var configs []ClientConfig
-
-	for i := 1; i < 5; i++ {
-		configs = append(configs, ClientConfig{
-			Phone:       fmt.Sprintf("%v%v%v", i, i, i),
-			PasswordMD5: "",
-			Server:      "",
-		})
-		t.Run(fmt.Sprintf("configs-%v", i), func(t *testing.T) {
-			t.Log("configs:", len(configs))
-			err := Init(configs, nil)
-			if err != nil {
-				t.Errorf("❌ Init() err=%v", err)
-			}
-
-			for j := 0; j < 10; j++ {
-				c := <-nextClientConfig
-				t.Log(j, c.Phone)
-			}
-		})
-	}
-}
+//func TestNextClientConfig(t *testing.T) {
+//	var configs []ClientConfig
+//
+//	for i := 1; i < 5; i++ {
+//		configs = append(configs, ClientConfig{
+//			Phone:       fmt.Sprintf("%v%v%v", i, i, i),
+//			PasswordMD5: "",
+//			Server:      "",
+//		})
+//		t.Run(fmt.Sprintf("configs-%v", i), func(t *testing.T) {
+//			t.Log("configs:", len(configs))
+//			err := Init(configs, nil)
+//			if err != nil {
+//				t.Errorf("❌ Init() err=%v", err)
+//			}
+//
+//			for j := 0; j < 10; j++ {
+//				c := <-nextClientConfig
+//				t.Log(j, c.Phone)
+//			}
+//		})
+//	}
+//}

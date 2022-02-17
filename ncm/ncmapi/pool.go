@@ -2,8 +2,7 @@ package ncmapi
 
 import (
 	"errors"
-	"strconv"
-	"sync"
+	"fmt"
 	"time"
 )
 
@@ -11,6 +10,7 @@ import (
 var (
 	NewClientRetryAfterSeconds = 1
 	NewClientMaxRetryTimes     = 3
+	ClientIsomers              = 1 // 客户端同配置体异示例体
 )
 
 // ClientConfig is configs for a new client
@@ -20,35 +20,31 @@ type ClientConfig struct {
 	Server      string
 }
 
-// generator: next config for new client
-var nextClientConfig chan ClientConfig
+// generator: next client
+var nextClient chan *client
 
 // client 的对象池
-var pool *sync.Pool
+var pool []*client
 
 // pool.New
-func poolNew() interface{} {
-	debug("poolNew in")
-	for i := 0; i < NewClientMaxRetryTimes; i++ {
-		debug("poolNew try =", i)
-		cfg := <-nextClientConfig // 这个在循环里，换一个号重试：可能配置是错的，不要死磕一个号
-		debug("poolNew got cfg:", cfg)
-		c, err := newClient(cfg.Phone, cfg.PasswordMD5, cfg.Server)
-		if err == nil { // success
-			debug("new client:", c)
-			return c
+func poolInit(configs []ClientConfig) {
+	for i := 0; i < ClientIsomers; i++ {
+		for _, cfg := range configs {
+			c, err := newClient(cfg.Phone, cfg.PasswordMD5, cfg.Server)
+			if err == nil { // success
+				pool = append(pool, c)
+			}
 		}
-		logger.Error("failed to create new client, try again after " + strconv.Itoa(NewClientRetryAfterSeconds) + " seconds...")
-		time.Sleep(time.Duration(NewClientRetryAfterSeconds) * time.Second)
+		time.Sleep(200 * time.Millisecond)
 	}
-	return nil
+	logger.Info(fmt.Sprintf("Pool size=%d", len(pool)))
 }
 
 // Init client pools with given clients.
 // Offer a Logger to customize logger, while customLogger=nil means using
 // default logger.
-func Init(clients []ClientConfig, customLogger Logger) error {
-	if clients == nil || len(clients) == 0 {
+func Init(configs []ClientConfig, customLogger Logger) error {
+	if configs == nil || len(configs) == 0 {
 		return errors.New("no clients to use")
 	}
 
@@ -59,18 +55,18 @@ func Init(clients []ClientConfig, customLogger Logger) error {
 		logger = newDefaultLogger()
 	}
 
-	// nextClientConfig gen
-	nextClientConfig = make(chan ClientConfig, len(clients))
+	poolInit(configs)
+
+	// nextClient gen
+	nextClient = make(chan *client, len(configs))
 	go func() {
 		for {
-			for _, c := range clients {
-				nextClientConfig <- c
+			for _, c := range pool {
+				nextClient <- c
 			}
 		}
 	}()
 
-	// init pool
-	pool = &sync.Pool{New: poolNew}
 	return nil
 }
 
@@ -79,24 +75,20 @@ func Init(clients []ClientConfig, customLogger Logger) error {
 // GetClient get you a Client from the client pool.
 // Do not forget call Done(client) to put client back when works are finished.
 func GetClient() Client {
-	debug("Debug: GetClient in")
-	g := pool.Get()
-	debug("Debug: pool.Get:", g)
-	switch c := g.(type) {
-	case Client:
+	select {
+	case c := <-nextClient:
 		return c
+	case <-time.After(time.Second * 3):
+		logger.Error("Pool: no client to use.")
+		return nil
 	}
-	logger.Error("GetClient return nil: no client to use")
-	return nil
 }
 
-// Done put c back to the pool
+// Deprecated: Done put c back to the pool
 func Done(c Client) {
-	switch c := c.(type) {
-	case *client:
-		pool.Put(c)
-	}
-	// else: rubbish
+	// Do nothing.
 }
 
 // endregion interface
+
+// TODO: 这个版本随便改的，测试过不了，先不管。

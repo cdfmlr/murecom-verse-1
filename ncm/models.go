@@ -1,4 +1,4 @@
-package ncm
+package main
 
 import (
 	"fmt"

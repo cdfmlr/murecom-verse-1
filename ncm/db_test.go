@@ -1,4 +1,4 @@
-package ncm
+package main
 
 import (
 	"encoding/json"
@@ -29,4 +29,28 @@ func TestInitDB(t *testing.T) {
 
 		DB.Save(&playlist)
 	})
+}
+
+func TestPlaylistExist(t *testing.T) {
+	InitConfig("test_config.json")
+	InitDB()
+
+	type args struct {
+		pid int64
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{"exist", args{pid: 2862916340}, true},
+		{"no-exist", args{pid: 99999999999}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := PlaylistExist(tt.args.pid); got != tt.want {
+				t.Errorf("PlaylistExist() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"path"
 	"strconv"
+	"time"
 )
 
 // API Paths
@@ -50,7 +51,15 @@ func newClient(phone string, passwordMD5 string, server string) (*client, error)
 	}
 
 	// 有 CookieJar 似乎就不用手动维护 Cookies 了，所以这里 LoginResult 没用。
-	_, err := c.login()
+	var err error
+	for i := 0; i < NewClientMaxRetryTimes; i++ {
+		_, err = c.login()
+		if err == nil {
+			continue
+		}
+		logger.Error("failed to create new client, try again after " + strconv.Itoa(NewClientRetryAfterSeconds) + " seconds...")
+		time.Sleep(time.Duration(NewClientRetryAfterSeconds) * time.Second)
+	}
 
 	return c, err
 }
