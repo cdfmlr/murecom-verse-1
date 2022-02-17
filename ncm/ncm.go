@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const Profile = true
+const Profile = false
 const Debug = false
 
 func main() {

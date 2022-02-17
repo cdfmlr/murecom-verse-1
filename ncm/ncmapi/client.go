@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -24,6 +25,7 @@ const (
 type Client interface {
 	login() (*LoginResult, error)
 	TopPlaylists(limit, offset int) (*TopPlaylistsResult, error)
+	TopPlaylistsCatalog(catalog string, limit, offset int) (*TopPlaylistsResult, error)
 	PlaylistDetail(id ID) (*PlaylistDetailResult, error)
 	PlaylistTracks(id ID, limit, offset int) (*PlaylistTracksResult, error)
 	TrackHotComment(id ID) (*HotCommentsResult, error)
@@ -144,11 +146,22 @@ func (c *client) login() (*LoginResult, error) {
 }
 
 func (c *client) TopPlaylists(limit, offset int) (*TopPlaylistsResult, error) {
+	return c.TopPlaylistsCatalog("", limit, offset)
+}
+
+// TopPlaylistsCatalog 就是带分类参数的 TopPlaylists。
+// 分类列表可以看 AllTopPlaylistsCatalogs
+func (c *client) TopPlaylistsCatalog(catalog string, limit, offset int) (*TopPlaylistsResult, error) {
 	apiUrl := c.apiUrl(PathTopPlaylists)
 
 	params := url.Values{}
 	params.Set("limit", strconv.Itoa(limit))
 	params.Set("offset", strconv.Itoa(offset))
+
+	catalog = strings.TrimSpace(catalog)
+	if len(catalog) != 0 {
+		params.Set("cat", catalog)
+	}
 
 	result := TopPlaylistsResult{}
 
@@ -220,3 +233,25 @@ type NcmError string
 func (n NcmError) Error() string { return string(n) }
 
 // endregion Errors
+
+// AllTopPlaylistsCatalogs 歌单分类列表。
+// 来自 https://music.163.com/#/discover/playlist -> (左上)全部分类
+var AllTopPlaylistsCatalogs = []string{
+	// 全部风格（总榜）
+	"",
+	// 语种
+	"华语", "欧美", "日语", "韩语", "粤语",
+	// 风格
+	"流行", "摇滚", "民谣", "电子", "舞曲", "说唱", "轻音乐", "爵士", "乡村",
+	"R&B/Soul", "古典", "民族", "英伦", "金属", "蓝调", "雷鬼", "世界音乐",
+	"拉丁", "New Age", "古风", "Bossa Nova",
+	// 场景
+	"清晨", "夜晚", "学习", "工作", "午休", "下午茶", "地铁", "驾车", "运动",
+	"旅行", "散步", "酒吧",
+	// 情感
+	"怀旧", "清新", "浪漫", "伤感", "治愈", "放松", "孤独", "感动", "兴奋",
+	"快乐", "安静", "思念",
+	// 主题
+	"综艺", "影视原声", "ACG", "儿童", "校园", "游戏", "70后", "80后", "90后",
+	"网络歌曲", "KTV", "经典", "翻唱", "吉他", "钢琴", "器乐", "榜单", "00后",
+}

@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"math"
 	"math/rand"
 	"ncm/ncmapi"
 	"sync"
@@ -15,9 +14,8 @@ const (
 	TopPlaylistBufferSize   = 10
 	TracksPagingLimit       = 50
 	PlaylistWorksTimeoutSec = 320
-	TrackWorksGoroutine     = 8
+	TrackWorksGoroutine     = 16
 	TrackWorksTimeoutSec    = 160
-	MaxPlaylistLen          = 1000
 )
 
 var ProgressCount = 1
@@ -27,7 +25,7 @@ var ProgressCount = 1
 
 // FetchTopPlaylists request TopPlaylists API, yields ncmapi.Playlist.
 // 一次给一个, bufferSize=TopPlaylistPagingLimit, 完了 close
-func FetchTopPlaylists(client ncmapi.Client) <-chan ncmapi.Playlist {
+func FetchTopPlaylists(client ncmapi.Client, catalog string) <-chan ncmapi.Playlist {
 	ch := make(chan ncmapi.Playlist, TopPlaylistBufferSize)
 
 	go func() {
@@ -35,7 +33,7 @@ func FetchTopPlaylists(client ncmapi.Client) <-chan ncmapi.Playlist {
 		count := 0                          // 已获取计数
 		for count < total {
 			// Request API
-			tpr, err := client.TopPlaylists(TopPlaylistPagingLimit, count) // 这个的 offset 是几就是从第几个开始
+			tpr, err := client.TopPlaylistsCatalog(catalog, TopPlaylistPagingLimit, count) // 这个的 offset 是几就是从第几个开始
 			if err != nil {
 				logger.Warn("FetchTopPlaylists failed, skip:", err)
 				continue
@@ -153,9 +151,9 @@ func PlaylistWorks(client ncmapi.Client, np *ncmapi.Playlist) error {
 	tracks := make([]ncmapi.Track, np.TrackCount)
 	trackCount := np.TrackCount
 
-	if trackCount > MaxPlaylistLen {
-		logger.Warn(fmt.Sprintf("Looong playlist (%v: %v): cut to maxLen=%v", np.Id, np.Name, MaxPlaylistLen))
-		trackCount = MaxPlaylistLen
+	if trackCount >= Config.MaxTracks {
+		logger.Warn(fmt.Sprintf("Looong playlist (%v: %v): cut to maxLen=%v", np.Id, np.Name, Config.MaxTracks))
+		trackCount = Config.MaxTracks
 	}
 	select {
 	case tracks = <-FetchTracks(client, np.Id, trackCount):
@@ -241,16 +239,18 @@ func TrackWorks(client ncmapi.Client, t *Track) error {
 	return nil
 }
 
-// Master 统筹安排从 FetchTopPlaylists 到 PlaylistWorks 到 TracksWorks 的一系列工作
-func Master() {
+// Task 统筹安排从 FetchTopPlaylists 到 PlaylistWorks 到 TracksWorks 的一系列工作，
+// 完成对 catalog 分类的爬取工作。
+func Task(catalog string) {
 	// 计数器、最大值
 	max := Config.MaxPlaylists
-	if max == 0 {
-		max = math.MaxInt
-	}
 	if max >= 100 {
 		ProgressCount = max / 100
 	}
+
+	// log tasks
+	logger.Info(fmt.Sprintf("NCM Task: catalogs=%q, max_playlists=%v (±%v)",
+		catalog, max, TopPlaylistBufferSize))
 
 	// 结束循环
 	chDone := make(chan struct{}, 1)
@@ -258,7 +258,7 @@ func Master() {
 	chWait := make(chan struct{}, 1)
 
 	// 更新计数器，打印进度
-	chCount := make(chan struct{}, TopPlaylistPagingLimit)
+	chCount := make(chan struct{}, TopPlaylistBufferSize)
 	go func() {
 		count := 0 // 已获取计数
 		for range chCount {
@@ -279,7 +279,7 @@ func Master() {
 		logger.Error("Get Client to FetchTopPlaylists failed, exit")
 		return
 	}
-	chPlaylist := FetchTopPlaylists(client)
+	chPlaylist := FetchTopPlaylists(client, Config.Catalogs[0])
 
 	// 填充列表、保存
 	wg := sync.WaitGroup{}
@@ -288,7 +288,7 @@ LOOP:
 	for { // 这里取 count 可能略脏，但多几个少几个似乎也没关系
 		select {
 		case <-chDone:
-			logger.Info("count=max: done.")
+			logger.Info("task ", catalog, ": count=max: done.")
 			break LOOP
 		case <-chWait:
 			wg.Wait()
@@ -298,7 +298,7 @@ LOOP:
 
 		np, ok := <-chPlaylist
 		if !ok {
-			logger.Warn("No more playlists, done.")
+			logger.Warn("task ", catalog, ": no more playlists, done.")
 			break LOOP
 		}
 
@@ -329,6 +329,18 @@ LOOP:
 
 	wg.Wait()
 	close(chCount)
+}
+
+func Master() {
+	logger.Info(fmt.Sprintf(
+		"NCM Master Tasks:\n\t catalogs=%q\n\t max %v playlists for each catalog.\n\t Good luck!",
+		Config.Catalogs, Config.MaxPlaylists))
+
+	for _, catalog := range Config.Catalogs {
+		Task(catalog)
+	}
+
+	logger.Info("NCM Master: Done.")
 }
 
 func logProgress(count, max int) {
