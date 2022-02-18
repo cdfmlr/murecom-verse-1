@@ -21,9 +21,13 @@ const (
 	TrackWorksGoroutine = 12
 	TaskWorksGap        = 10 // 每弄完这么多的列表，停下来休息一下
 
-	Retries            = 3 // 重试次数
+)
+
+// 这几个值以前是常量，现在在 Config 中配置，运行时将在 InitFetcher 中重新赋值
+var (
+	Retries            = 5 // 重试次数
 	ErrorSleepSec      = 3 // 出错了停下来等几秒，ncm api server 可能要重启
-	ErrorSleepDuration = ErrorSleepSec * time.Second
+	ErrorSleepDuration = time.Duration(ErrorSleepSec) * time.Second
 )
 
 // FetchTopPlaylists request TopPlaylists API, yields ncmapi.Playlist.
@@ -36,24 +40,25 @@ func FetchTopPlaylists(ctx context.Context, client ncmapi.Client, catalog string
 
 		total := TopPlaylistPagingLimit + 1 // 所有播放列表的数量，一开始随便设个值，从第一次请求中取真值
 		count := 0                          // 已获取计数
+
 		for count < total {
-			select {
-			case <-ctx.Done():
-				logger.Debug("FetchTopPlaylists canceled, close chan and return early")
-				return
-			default:
-			}
 			// Request API
 			var tpr *ncmapi.TopPlaylistsResult
 			var err error
 
-			err = doWithRetries("FetchTopPlaylists", Retries, ErrorSleepDuration, func() error {
+			err = doWithRetries(ctx, "FetchTopPlaylists", Retries, ErrorSleepDuration, func() error {
 				tpr, err = client.TopPlaylistsCatalog(catalog, TopPlaylistPagingLimit, count) // 这个的 offset 是几就是从第几个开始
 				return err
 			})
 			if err != nil {
-				logger.Error("FetchTopPlaylists failed, skip:", err)
-				continue
+				switch {
+				case isErrCtxCanceled(err):
+					logger.Debug("FetchTopPlaylists canceled, close chan and return early")
+					return
+				default:
+					logger.Error("FetchTopPlaylists failed, skip:", err)
+					continue
+				}
 			}
 
 			// Yield playlists
@@ -97,22 +102,20 @@ func FetchTracks(ctx context.Context, client ncmapi.Client, pid int64, trackCoun
 		var tracks []ncmapi.Track
 
 		for offset := 0; offset*TracksPagingLimit < trackCount; offset++ {
-			select {
-			case <-ctx.Done():
-				logger.Debug("FetchTracks canceled, close chan and return early")
-				return
-			default:
-			}
-
 			var ptr *ncmapi.PlaylistTracksResult
 			var err error
 
-			err = doWithRetries("FetchTracks", Retries, ErrorSleepDuration, func() error {
+			err = doWithRetries(ctx, "FetchTracks", Retries, ErrorSleepDuration, func() error {
 				ptr, err = client.PlaylistTracks(pid, TracksPagingLimit, offset)
 				return err
 			})
 			if err != nil {
-				logger.Error("FetchTracks failed: ", fmt.Sprintf("pid=%v, err=%v", pid, err.Error()))
+				switch {
+				case isErrCtxCanceled(err):
+					logger.Debug("FetchTracks canceled, close chan and return early", fmt.Sprintf("pid=%v, err=%v", pid, err.Error()))
+				default:
+					logger.Error("FetchTracks failed: ", fmt.Sprintf("pid=%v, err=%v", pid, err.Error()))
+				}
 				return
 			}
 
@@ -146,22 +149,23 @@ func FetchLyrics(ctx context.Context, client ncmapi.Client, tid int64) <-chan nc
 	go func() {
 		defer close(ch)
 
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
 		var lr *ncmapi.LyricResult
 		var err error
 
-		err = doWithRetries("FetchLyrics", Retries, ErrorSleepDuration, func() error {
+		err = doWithRetries(ctx, "FetchLyrics", Retries, ErrorSleepDuration, func() error {
 			lr, err = client.Lyric(tid)
 			return err
 		})
 		if err != nil {
-			logger.Error("FetchLyrics failed, use zero value:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
+			switch {
+			case isErrCtxCanceled(err):
+				logger.Debug("FetchLyrics canceled, close chan and return early", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
+				return
+			default:
+				logger.Error("FetchLyrics failed, use zero value:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
+			}
 		}
+		// Yield
 		ch <- *lr
 	}()
 
@@ -175,22 +179,24 @@ func FetchComments(ctx context.Context, client ncmapi.Client, tid int64) <-chan 
 	go func() {
 		defer close(ch)
 
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
 		var cr *ncmapi.HotCommentsResult
 		var err error
-		err = doWithRetries("FetchComments", Retries, ErrorSleepDuration, func() error {
+
+		err = doWithRetries(ctx, "FetchComments", Retries, ErrorSleepDuration, func() error {
 			cr, err = client.TrackHotComment(tid)
 			return err
 		})
 		if err != nil {
-			logger.Error("FetchLyrics failed, use zero value:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
+			switch {
+			case isErrCtxCanceled(err):
+				logger.Debug("FetchComments canceled, close chan and return early", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
+				return
+			default:
+				logger.Error("FetchComments failed, use zero value:", fmt.Sprintf("tid=%v, err=%v", tid, err.Error()))
+			}
 		}
 
+		// Yield
 		ch <- cr.HotComments
 	}()
 
@@ -418,8 +424,12 @@ LOOP:
 
 func Master() {
 	logger.Info(fmt.Sprintf(
-		"NCM Master Tasks:\n\t catalogs=%q\n\t max %v playlists for each catalog.\n\t Good luck!",
-		Config.Catalogs, Config.MaxPlaylists))
+		"NCM Master Tasks:\n"+
+			"\t catalogs=%q\n"+
+			"\t max %v playlists for each catalog.\n"+
+			"\t on error: sleep %v+ and retries (max %v times)"+
+			"\t Good luck!",
+		Config.Catalogs, Config.MaxPlaylists, ErrorSleepDuration, Retries))
 
 	for i, catalog := range Config.Catalogs {
 		Task(catalog, i)
@@ -466,14 +476,33 @@ func slowdown() {
 // doWithRetries 做 f 失败了睡 sleep 后重试，最多重试 retries 次。
 // name 是用来打日志的，空则沉默工作。
 // 小实验: https://go.dev/play/p/d-rAGWOSApC
-func doWithRetries(name string, retries int, sleep time.Duration, f func() error) error {
+func doWithRetries(ctx context.Context, name string, retries int, sleep time.Duration, f func() error) error {
 	var err error
 
 	for retry := 0; retry < retries; retry++ {
-		err = f()
+		// 随机增量，岔开重试
+		sleep += time.Duration(rand.Intn(10)) * (sleep / 10)
+
+		// canceled or do f()
+		select {
+		case <-ctx.Done():
+			if name != "" {
+				logger.Debug(name, " canceled, return early")
+			}
+			return ctx.Err()
+		default:
+			err = f()
+		}
+
+		// error: retry
 		if err != nil {
 			if name != "" {
-				logger.Warn(fmt.Sprintf("%v failed, wait %v and retry: %v", name, sleep, err))
+				// 少啰嗦，试几次不行再说。天天满屏幕都是这个 Warn
+				var logFunc func(a ...interface{}) = logger.Debug
+				if retry >= retries/2 {
+					logFunc = logger.Warn
+				}
+				logFunc(fmt.Sprintf("%v failed, wait %v and retry: %v", name, sleep, err))
 			}
 			time.Sleep(sleep)
 		} else { // err == nil: success
@@ -483,4 +512,14 @@ func doWithRetries(name string, retries int, sleep time.Duration, f func() error
 	return err
 }
 
+func isErrCtxCanceled(err error) bool {
+	return (err == context.Canceled) || (err == context.DeadlineExceeded)
+}
+
 // endregion helpers
+
+func InitFetcher() {
+	Retries = Config.ErrorHandling.MaxRetries
+	ErrorSleepSec = Config.ErrorHandling.SleepSec
+	ErrorSleepDuration = time.Duration(ErrorSleepSec) * time.Second
+}

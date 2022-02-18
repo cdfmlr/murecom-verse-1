@@ -30,6 +30,7 @@ func main() {
 		logger.Fatal("ncmapi Init failed:", err)
 	}
 	InitDB()
+	InitFetcher()
 
 	// run
 	Master()

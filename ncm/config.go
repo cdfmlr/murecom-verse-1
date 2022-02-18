@@ -14,12 +14,16 @@ var Config struct {
 		PasswordMD5 string `json:"password_md5"`
 		Server      string `json:"server"`
 	} `json:"client"`
-	DB           string   `json:"db"`
-	MaxPlaylists int      `json:"max_playlists"` // 对 Catalogs 中的每一项最多爬 MaxPlaylists 张: default 1000
-	MaxTracks    int      `json:"max_tracks"`    // 一张播放列表中最多爬几首歌，默认(≤0): 不限制(MaxInt)，但一张列表最多搞 10 分钟，搞不完会 cancel 掉
-	Speed        int      `json:"speed"`         // ±200, 正慢负快
-	Profile      string   `json:"profile"`       // 放 profile 结果的目录
-	Catalogs     []string `json:"catalogs"`      // 若为空，遍历所有已知的: ncmapi.AllTopPlaylistsCatalogs
+	DB            string   `json:"db"`
+	MaxPlaylists  int      `json:"max_playlists"` // 对 Catalogs 中的每一项最多爬 MaxPlaylists 张: default 1000
+	MaxTracks     int      `json:"max_tracks"`    // 一张播放列表中最多爬几首歌，默认(≤0): 不限制(MaxInt)，但一张列表最多搞 10 分钟，搞不完会 cancel 掉
+	Speed         int      `json:"speed"`         // ±200, 正慢负快
+	Profile       string   `json:"profile"`       // 放 profile 结果的目录
+	Catalogs      []string `json:"catalogs"`      // 若为空，遍历所有已知的: ncmapi.AllTopPlaylistsCatalogs
+	ErrorHandling struct {
+		SleepSec   int `json:"sleep_sec"`   // 出错了停下来等几秒，ncm api server 可能要重启, default 3
+		MaxRetries int `json:"max_retries"` // 重试次数，default 5
+	} `json:"error_handling"`
 }
 
 // InitConfig read the config file
@@ -31,7 +35,12 @@ func InitConfig(file string) {
 	err = json.Unmarshal(j, &Config)
 	must(err)
 
-	// 边界值设定
+	configDefault()
+}
+
+// 设定默认值
+func configDefault() {
+
 	if Config.MaxPlaylists <= 0 {
 		Config.MaxPlaylists = 1000
 	}
@@ -44,6 +53,12 @@ func InitConfig(file string) {
 	if len(Config.Catalogs) == 0 {
 		logger.Info("Config: no catalogs specified, use all known: ", ncmapi.AllTopPlaylistsCatalogs)
 		Config.Catalogs = ncmapi.AllTopPlaylistsCatalogs
+	}
+	if Config.ErrorHandling.MaxRetries <= 0 {
+		Config.ErrorHandling.MaxRetries = 5
+	}
+	if Config.ErrorHandling.SleepSec <= 0 {
+		Config.ErrorHandling.SleepSec = 3
 	}
 }
 
