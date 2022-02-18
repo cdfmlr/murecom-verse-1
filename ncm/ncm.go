@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"ncm/ncmapi"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path"
 	"runtime/pprof"
@@ -20,6 +22,11 @@ func main() {
 		f, _ := os.Create(path.Join(Config.Profile, fmt.Sprintf("%v.prof", st)))
 		_ = pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
+
+		// http://localhost:6060/debug/pprof/
+		go func() {
+			panic(http.ListenAndServe(":6060", nil))
+		}()
 	}
 
 	// init

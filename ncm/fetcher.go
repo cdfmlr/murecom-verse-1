@@ -94,7 +94,7 @@ func FetchPlaylistDetail(client ncmapi.Client, pid int64) <-chan ncmapi.Playlist
 
 // FetchTracks 只给一次，失败给零值
 func FetchTracks(ctx context.Context, client ncmapi.Client, pid int64, trackCount int) <-chan []ncmapi.Track {
-	ch := make(chan []ncmapi.Track)
+	ch := make(chan []ncmapi.Track, 1)
 
 	go func() {
 		defer close(ch)
@@ -144,7 +144,7 @@ func FetchTracks(ctx context.Context, client ncmapi.Client, pid int64, trackCoun
 
 // FetchLyrics 只给一次，失败给零值
 func FetchLyrics(ctx context.Context, client ncmapi.Client, tid int64) <-chan ncmapi.LyricResult {
-	ch := make(chan ncmapi.LyricResult)
+	ch := make(chan ncmapi.LyricResult, 1)
 
 	go func() {
 		defer close(ch)
@@ -174,7 +174,7 @@ func FetchLyrics(ctx context.Context, client ncmapi.Client, tid int64) <-chan nc
 
 // FetchComments 只给一次，失败给零值
 func FetchComments(ctx context.Context, client ncmapi.Client, tid int64) <-chan []ncmapi.HotComment {
-	ch := make(chan []ncmapi.HotComment)
+	ch := make(chan []ncmapi.HotComment, 1)
 
 	go func() {
 		defer close(ch)
@@ -415,6 +415,7 @@ LOOP:
 				msg := fmt.Sprintf("%v <%v>", np.Id, np.Name)
 				chCount <- msg
 			}
+
 			wg.Done()
 		}()
 	}
@@ -427,7 +428,7 @@ func Master() {
 		"NCM Master Tasks:\n"+
 			"\t catalogs=%q\n"+
 			"\t max %v playlists for each catalog.\n"+
-			"\t on error: sleep %v+ and retries (max %v times)"+
+			"\t on error: sleep %v+ and retries (max %v times)\n"+
 			"\t Good luck!",
 		Config.Catalogs, Config.MaxPlaylists, ErrorSleepDuration, Retries))
 
