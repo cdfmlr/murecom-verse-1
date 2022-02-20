@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"ncm/ncmapi"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -15,16 +16,17 @@ const (
 	TopPlaylistBufferSize  = 10
 	TracksPagingLimit      = 50
 
-	PlaylistWorksTimeoutSec = 600
-	TrackWorksTimeoutSec    = 60
-
-	TrackWorksGoroutine = 12
+	TrackWorksGoroutine = 12 // Deprecated: use trackWorksGoroutines() instead
 	TaskWorksGap        = 10 // 每弄完这么多的列表，停下来休息一下
-
 )
 
 // 这几个值以前是常量，现在在 Config 中配置，运行时将在 InitFetcher 中重新赋值
 var (
+	PlaylistWorksTimeoutSec = 600
+	PlaylistWorksTimeout    = time.Duration(PlaylistWorksTimeoutSec) * time.Second
+	TrackWorksTimeoutSec    = 60
+	TrackWorksTimeout       = time.Duration(TrackWorksTimeoutSec) * time.Second
+
 	Retries            = 5 // 重试次数
 	ErrorSleepSec      = 3 // 出错了停下来等几秒，ncm api server 可能要重启
 	ErrorSleepDuration = time.Duration(ErrorSleepSec) * time.Second
@@ -212,13 +214,15 @@ func PlaylistWorks(ctx context.Context, client ncmapi.Client, np *ncmapi.Playlis
 	tracks := make([]ncmapi.Track, np.TrackCount)
 	trackCount := np.TrackCount
 
-	if trackCount >= Config.MaxTracks {
-		logger.Warn(fmt.Sprintf("Looong playlist (%v: %v): cut to maxLen=%v", np.Id, np.Name, Config.MaxTracks))
-		trackCount = Config.MaxTracks
+	maxTracks := Config.Task.MaxTracks
+
+	if trackCount >= Config.Task.MaxTracks {
+		logger.Warn(fmt.Sprintf("Looong playlist (%v: %v): cut to maxLen=%v", np.Id, np.Name, maxTracks))
+		trackCount = maxTracks
 	}
 
 	// context 加上 Timeout，超时快停
-	ctx, cancel := context.WithTimeout(ctx, PlaylistWorksTimeoutSec*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, PlaylistWorksTimeout)
 	defer cancel()
 
 	select {
@@ -258,8 +262,9 @@ func PlaylistWorks(ctx context.Context, client ncmapi.Client, np *ncmapi.Playlis
 			logger.Debug("PlaylistWorks=>TrackWorks: context canceled, returns early: ", ctx.Err().Error())
 			return errors.New("context canceled" + ctx.Err().Error())
 		default:
-			if i%TrackWorksGoroutine == 0 {
+			if i%trackWorksGoroutines() == 0 {
 				wg.Wait()
+				slowdown()
 			} else {
 				slowdown()
 			}
@@ -295,7 +300,7 @@ func TrackWorks(ctx context.Context, client ncmapi.Client, t *Track) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, TrackWorksTimeoutSec*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, TrackWorksTimeout)
 	defer cancel()
 
 	// 开始子任务
@@ -330,7 +335,7 @@ func TrackWorks(ctx context.Context, client ncmapi.Client, t *Track) error {
 // n: 第几个工作，为了打日志好看
 func Task(catalog string, n int) {
 	// 最大值，设置打印进度
-	max := Config.MaxPlaylists
+	max := Config.Task.MaxPlaylists
 
 	// log tasks
 	logger.Info(fmt.Sprintf("NCM Task %v: catalogs=%q, max_playlists=%v (±%v)",
@@ -345,7 +350,7 @@ func Task(catalog string, n int) {
 	defer close(chCount)
 
 	// 暂停等待
-	chWait := make(chan struct{}, 1)
+	chWait := make(chan struct{}, max/TaskWorksGap+1)
 
 	// 计数器工作
 	go func() {
@@ -381,8 +386,7 @@ LOOP:
 		case <-ctx.Done():
 			return
 		case <-chWait:
-			wg.Wait()
-			for i := 0; i < 3; i++ {
+			for i := 0; i < TaskWorksGap; i++ {
 				slowdown()
 			}
 		default:
@@ -413,7 +417,13 @@ LOOP:
 
 			if err == nil { // success
 				msg := fmt.Sprintf("%v <%v>", np.Id, np.Name)
-				chCount <- msg
+
+				select {
+				case <-ctx.Done():
+					// do nothing
+				default:
+					chCount <- msg
+				}
 			}
 
 			wg.Done()
@@ -429,14 +439,15 @@ func Master() {
 			"\t catalogs=%q\n"+
 			"\t max %v playlists for each catalog.\n"+
 			"\t on error: sleep %v+ and retries (max %v times)\n"+
+			"\t timeout: playlist=%v, track=%v\n"+
 			"\t Good luck!",
-		Config.Catalogs, Config.MaxPlaylists, ErrorSleepDuration, Retries))
+		Config.Catalogs, Config.Task.MaxPlaylists, ErrorSleepDuration, Retries, PlaylistWorksTimeout, TrackWorksTimeout))
 
 	for i, catalog := range Config.Catalogs {
 		Task(catalog, i)
 
 		// 休息一下哦，任务越多休息越久，防被 ban ip
-		rest := time.Duration(len(Config.Catalogs)) * 5 * time.Second
+		rest := time.Duration(Config.SleepSecBetweenTasks) * time.Second
 
 		//logger.Info(fmt.Sprintf("NCM Master: %v%% (%v/%v) tasks done.",
 		//	(i+1)*100/len(Config.Catalogs), i+1, len(Config.Catalogs)))
@@ -517,10 +528,42 @@ func isErrCtxCanceled(err error) bool {
 	return (err == context.Canceled) || (err == context.DeadlineExceeded)
 }
 
+func trackWorksGoroutines() int {
+	n := runtime.NumGoroutine()
+
+	if n < 200 {
+		return 200
+	}
+	if n < 500 {
+		return 100
+	}
+	if n < 800 {
+		return 50
+	}
+	if n < 1200 {
+		return 10
+	}
+	if n < 1500 {
+		return 5
+	}
+	if n < 2000 {
+		return 2
+	}
+	// too many goroutines
+	return 1
+}
+
 // endregion helpers
 
 func InitFetcher() {
+	PlaylistWorksTimeoutSec = Config.Task.PlaylistWorksTimeoutSec
+	PlaylistWorksTimeout = time.Duration(PlaylistWorksTimeoutSec) * time.Second
+
+	TrackWorksTimeoutSec = Config.Task.TrackWorksTimeoutSec
+	TrackWorksTimeout = time.Duration(TrackWorksTimeoutSec) * time.Second
+
 	Retries = Config.ErrorHandling.MaxRetries
+
 	ErrorSleepSec = Config.ErrorHandling.SleepSec
 	ErrorSleepDuration = time.Duration(ErrorSleepSec) * time.Second
 }
