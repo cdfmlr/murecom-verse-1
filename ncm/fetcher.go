@@ -531,22 +531,22 @@ func isErrCtxCanceled(err error) bool {
 func trackWorksGoroutines() int {
 	n := runtime.NumGoroutine()
 
-	if n < 200 {
+	if n < 500 {
 		return 200
 	}
-	if n < 500 {
+	if n < 800 {
 		return 100
 	}
-	if n < 800 {
+	if n < 1000 {
 		return 50
 	}
-	if n < 1200 {
+	if n < 1500 {
 		return 10
 	}
-	if n < 1500 {
+	if n < 2000 {
 		return 5
 	}
-	if n < 2000 {
+	if n < 3000 {
 		return 2
 	}
 	// too many goroutines
