@@ -298,3 +298,5 @@ go.work
 /ncm/profile/
 /ncm/config.json
 /ncm/ncm
+/emotracks/config.json
+/todo.md

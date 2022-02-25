@@ -6,6 +6,10 @@ name = "pypi"
 [packages]
 pyflowchart = "*"
 jieba = "*"
+psycopg = {extras = ["binary", "pool"], version = "*"}
+sqlalchemy = "*"
+jupyterlab = "*"
+psycopg2 = "*"
 
 [dev-packages]
 
