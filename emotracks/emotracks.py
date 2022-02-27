@@ -4,9 +4,13 @@
 为数据库中的所有曲目标注情感。
 
 $ cd /path/to/murecom/verse-1/emotracks
-$ PYTHONPATH=$PYTHONPATH:/path/to/murecom/verse-1 p3 emotracks.py
+$ PYTHONPATH=$PYTHONPATH:/path/to/murecom/verse-1 p3 emotracks.py [start] [end]
+
+start，end 是开始/结束的索引，default start=0, end=len(tracks)
 """
 
+import sys
+import time
 import json
 from math import log
 
@@ -120,16 +124,38 @@ def add_emotion(t: Track, verbose=False):
 
 
 if __name__ == '__main__':
+    is_append = config['append']
+
+    start = 0
+    if len(sys.argv) > 1:
+        start = int(sys.argv[1])
+
     session = Session(engine)
-    tks = session.query(Track)
+    tks = session.query(Track).order_by(Track.pop.desc(), Track.id)
 
-    i = 0
+    # total 暂时是 db 中 track 的总数量
+    total = tks.count()
+    if start > total:
+        raise ValueError(f"error: start ({start}) > total ({total})")
 
-    for t in tks:
+    end = total
+    if len(sys.argv) > 2:
+        end = int(sys.argv[2])
+
+    # 以下 total 是 start 到 end 有多少，即该程序此次运行的任务量
+    total = end - start
+
+    print(f"Emotracks for tracks in ncm db, order by pop desc "
+          f"(total={total}/{tks.count()}, {is_append=})\n\t{start=}, {end=}")
+
+    i = 0  # counter i = 0...total
+    for t in tks[start:end]:
         i += 1
-        if i % 10 == 0:
-            print(f'{i / tks.count() * 100:.2f}%')
+        if i % 20 == 0:
+            print(f'📦 {i / total * 100:.2f}%: {i}/{total}')
+            time.sleep(1)
 
-        if config['append'] and t.track_emotions_collection:
+        if is_append and t.track_emotions_collection:
+            print(f'🪂 exist: {t.name} (emos: {len(t.track_emotions_collection)}), skip')
             continue
         add_emotion(t, verbose=True)
