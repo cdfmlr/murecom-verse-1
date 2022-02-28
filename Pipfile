@@ -10,6 +10,7 @@ psycopg = {extras = ["binary", "pool"], version = "*"}
 sqlalchemy = "*"
 jupyterlab = "*"
 psycopg2 = "*"
+scikit-learn = "*"
 
 [dev-packages]
 
