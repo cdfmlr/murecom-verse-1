@@ -301,3 +301,5 @@ go.work
 /emotracks/config.json
 /todo.md
 /config.json
+/savedata/
+/savemodels/
