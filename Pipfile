@@ -11,6 +11,11 @@ sqlalchemy = "*"
 jupyterlab = "*"
 psycopg2 = "*"
 scikit-learn = "*"
+torch = "*"
+torchvision = "*"
+tensorboardx = "*"
+opencv-python = "*"
+aiohttp = "*"
 
 [dev-packages]
 

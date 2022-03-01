@@ -303,3 +303,5 @@ go.work
 /config.json
 /savedata/
 /savemodels/
+/emopic/results/*.jpg
+/emopic/models/yolo*
