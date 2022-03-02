@@ -16,6 +16,7 @@ torchvision = "*"
 tensorboardx = "*"
 opencv-python = "*"
 aiohttp = "*"
+matplotlib = "*"
 
 [dev-packages]
 
