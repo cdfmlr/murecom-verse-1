@@ -1,0 +1,3 @@
+[submodule "emopic/emotic"]
+	path = emopic/emotic
+	url = https://github.com/cdfmlr/emotic
