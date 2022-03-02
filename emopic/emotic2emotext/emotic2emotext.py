@@ -31,7 +31,7 @@ dlut2cat = {
 cat2dlut = {v: k for k, vs in dlut2cat.items() for v in vs}
 
 
-def emotic2emotext(cat: Dict[str, float], cont: List[float]):
+def emotic2dlut(cat: Dict[str, float], cont: List[float]):
     dlut = dict.fromkeys(dlut2cat.keys(), 0.0)
 
     sumv = sum(cat.values())

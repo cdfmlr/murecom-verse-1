@@ -1,7 +1,7 @@
 import json
 import sys
 
-from emotic2emotext import emotic2emotext
+from emotic2emotext import emotic2dlut
 
 if __name__ == '__main__':
     # emotic/server output json => emotext emotions
@@ -9,6 +9,6 @@ if __name__ == '__main__':
     for line in sys.stdin:
         out = []
         for res in json.loads(line):
-            dlut = emotic2emotext(res['cat'], res['cont'])
+            dlut = emotic2dlut(res['cat'], res['cont'])
             out.append({'bbox': res['bbox'], 'emotions': dlut})
         sys.stdout.write(json.dumps(out) + '\n')

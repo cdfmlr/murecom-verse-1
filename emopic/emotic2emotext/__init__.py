@@ -1,1 +1,1 @@
-from emotic2emotext import emotic2emotext
+from .emotic2emotext import emotic2dlut
