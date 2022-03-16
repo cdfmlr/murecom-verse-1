@@ -1,4 +1,4 @@
-package main
+package ncm
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 )
+
+const Debug = false
 
 const (
 	TopPlaylistPagingLimit = 35

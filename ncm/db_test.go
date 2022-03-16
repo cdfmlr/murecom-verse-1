@@ -1,4 +1,4 @@
-package main
+package ncm
 
 import (
 	"encoding/json"
