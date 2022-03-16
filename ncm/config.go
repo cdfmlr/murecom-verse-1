@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/cdfmlr/murecom-verse-1/ncm/ncmapi"
 	"io/ioutil"
 	"math"
-	"ncm/ncmapi"
 	"os"
 )
 

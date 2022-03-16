@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"ncm/ncmapi"
+	"github.com/cdfmlr/murecom-verse-1/ncm/ncmapi"
 	"net/http"
 	_ "net/http/pprof"
 )

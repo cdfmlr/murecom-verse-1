@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"github.com/cdfmlr/murecom-verse-1/ncm/ncmapi"
 	"gorm.io/gorm"
-	"ncm/ncmapi"
 	"regexp"
 	"strings"
 	"sync"

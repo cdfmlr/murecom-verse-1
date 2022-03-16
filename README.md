@@ -75,7 +75,7 @@
 
 ![db](https://tva1.sinaimg.cn/large/e6c9d24ely1gzwuuw476gj21p10u0gpn.jpg)
 
-和我们上一篇文章获取 Spotify 的数据不同，网易云有个特点——歌单里面曲目多，所以我们获取了不到 1 万张列表，就得到了 20 万首歌曲，100 万条热门评论。
+和我们[上一篇文章](https://juejin.cn/post/7056759330472722469)获取 Spotify 的数据不同，网易云有个特点——歌单里面曲目多，所以我们获取了不到 1 万张列表，就得到了 20 万首歌曲，100 万条热门评论。
 
 ```sql
 ncm=# select count(*) from playlists;

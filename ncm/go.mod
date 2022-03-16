@@ -1,4 +1,4 @@
-module ncm
+module github.com/cdfmlr/murecom-verse-1/ncm
 
 go 1.17
 

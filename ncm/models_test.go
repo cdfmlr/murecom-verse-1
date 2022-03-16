@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"ncm/ncmapi"
+	"github.com/cdfmlr/murecom-verse-1/ncm/ncmapi"
 	"os"
 	"testing"
 )
