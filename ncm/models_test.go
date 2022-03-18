@@ -129,3 +129,53 @@ func TestPlaylistFromNcmapi(t *testing.T) {
 	}
 	t.Logf("✅ tracks: %#v", trackNames)
 }
+
+func TestQuery(t *testing.T) {
+	// init
+	InitConfig("test_config.json")
+	InitDB()
+
+	// query
+	var s Track
+	DB.Preload("Artists").Preload("Album").
+		Preload("Comments").Preload("Comments.User").
+		Preload("Emotions").Order("pop DESC, publish_time").
+		First(&s)
+
+	// tests
+	switch {
+	case s.Id == 0:
+		t.Error("❌ Id")
+	case s.Name == "":
+		t.Error("❌ Name")
+	case len(s.Artists) == 0:
+		t.Error("❌ Artists")
+	case len(s.Comments) == 0:
+		t.Error("❌ Comments")
+	case len(s.Emotions) == 0:
+		t.Error("❌ Emotions")
+	}
+
+	// result
+	var artists []string
+	for _, a := range s.Artists {
+		artists = append(artists, a.Name)
+	}
+
+	var comments []string
+	for _, c := range s.Comments {
+		runes := []rune(c.Content)
+		if len(runes) >= 5 {
+			comments = append(comments, string(runes[:5])+"...")
+		}
+	}
+
+	var emotions []TrackEmotion
+	for _, e := range s.Emotions {
+		emotions = append(emotions, *e)
+	}
+
+	t.Logf("✅ track(%v): %v - %v", s.Id, s.Name, artists)
+	t.Logf("✅ comments: %v", comments)
+	t.Logf("✅ emotions; %#v", emotions)
+}

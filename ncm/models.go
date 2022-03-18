@@ -32,14 +32,21 @@ type Playlist struct {
 }
 
 type Track struct {
-	Id          int64      `json:"id" gorm:"primaryKey"`
-	Name        string     `json:"name"`
-	Artists     []*Artist  `json:"ar" gorm:"many2many:track_artists"`
-	Pop         int        `json:"pop"`
-	Album       []*Album   `json:"al" gorm:"many2many:track_albums"`
-	PublishTime Timestamp  `json:"publishTime"`
-	Comments    []*Comment `json:"comments" gorm:"many2many:track_comments"` // hot_comments
-	Lyric       string     `json:"lyric"`                                    // 仅中文, 无则空
+	Id          int64           `json:"id" gorm:"primaryKey"`
+	Name        string          `json:"name"`
+	Artists     []*Artist       `json:"ar" gorm:"many2many:track_artists"`
+	Pop         int             `json:"pop"`
+	Album       []*Album        `json:"al" gorm:"many2many:track_albums"`
+	PublishTime Timestamp       `json:"publishTime"`
+	Comments    []*Comment      `json:"comments" gorm:"many2many:track_comments"` // hot_comments
+	Lyric       string          `json:"lyric"`                                    // 仅中文, 无则空
+	Emotions    []*TrackEmotion `json:"emotions" gorm:"foreignKey:TrackId"`
+}
+
+type TrackEmotion struct {
+	TrackId   int64   `json:"track_id" gorm:"primaryKey"`
+	Emotion   string  `json:"emotion" gorm:"primaryKey"`
+	Intensity float64 `json:"intensity"`
 }
 
 type Artist struct {
