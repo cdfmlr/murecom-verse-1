@@ -129,11 +129,18 @@ class EmotionalRecommenderServer(EmotionalRecommenderBase, ABC):
 
     async def handle_http(self, request: web.Request):
         seed = request.query.get(self.seed_name())
+
+        print(f"REQ {request.rel_url}: {seed}")
+
         if not seed:
             raise web.HTTPBadRequest(text=f"seed ({self.seed_name()}) required")
         k = int(request.query.get("k") or 10)
 
         result = self.recommend(seed, k=k)
+
+        # print(f"RESP {result}")
+
+        # return web.json_response(result, headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, HEAD, OPTIONS"})
         return web.json_response(result)
 
     @abstractmethod
@@ -148,6 +155,8 @@ def softmax_dict(x: dict):
     :return: softmaxed x
     """
     s = sum(v for v in x.values())
+    if s <= 1e-8:
+        return x
     for k in x:
         x[k] /= s
     return x
@@ -245,14 +254,35 @@ def make_parser() -> argparse.ArgumentParser:
     return parser
 
 
+@web.middleware
+async def cors_middleware(request, handler):
+    # if request.method == 'OPTIONS':
+    #     response = web.Response(text="")
+    # else:
+    response = await handler(request)
+
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = '*'
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+
+    return response
+
+
+async def empty_handler(request):
+    return web.Response()
+
+
 def run_service(args):
-    app = web.Application()
+    app = web.Application(middlewares=[cors_middleware])
+    app.add_routes([web.options('/', empty_handler)])
 
     if args.text:
         emotext_recommender = EmotionalTextRecommenderServer(
             args.db, args.model, args.data)
         app.add_routes([
-            web.get('/text', emotext_recommender.handle_http)
+            web.get('/text', emotext_recommender.handle_http),
+            web.options('/text', empty_handler)
         ])
     if args.pic:
         assert hasattr(args, 'emopic_server'), (
@@ -260,7 +290,8 @@ def run_service(args):
         emopic_recommender = EmotionalPictureRecommenderServer(
             args.db, args.model, args.data, args.emopic_server)
         app.add_routes([
-            web.get('/pic', emopic_recommender.handle_http)
+            web.get('/pic', emopic_recommender.handle_http),
+            web.options('/pic', empty_handler)
         ])
 
     web.run_app(app, host=args.host, port=args.port)
