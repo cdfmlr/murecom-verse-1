@@ -130,7 +130,7 @@ class EmotionalRecommenderServer(EmotionalRecommenderBase, ABC):
     async def handle_http(self, request: web.Request):
         seed = request.query.get(self.seed_name())
 
-        print(f"REQ {request.rel_url}: {seed}")
+        print(f"GET {request.rel_url}: {seed}")
 
         if not seed:
             raise web.HTTPBadRequest(text=f"seed ({self.seed_name()}) required")
@@ -176,7 +176,7 @@ class EmotionalTextRecommenderServer(EmotionalRecommenderServer):
         return Emotion(**r.emotions)
 
 
-class EmotionalPictureRecommenderServer(EmotionalRecommenderServer):
+class EmotionalPictureRecommenderGetServer(EmotionalRecommenderServer):
     def seed_name(self) -> str:
         return "img_path"
 
@@ -224,6 +224,71 @@ class EmotionalPictureRecommenderServer(EmotionalRecommenderServer):
             total_emotion[k] /= sum_v
 
         return Emotion(**total_emotion)
+
+# TODO: EmotionalPictureRecommenderPostServer 和 EmotionalPictureRecommenderGetServer 存在许多重复代码
+class EmotionalPictureRecommenderPostServer(EmotionalRecommenderServer):
+    def seed_name(self) -> str:
+        return 'post-data-img'
+
+    def __init__(self, db, model_file, data_file, emopic_server):
+        super().__init__(db, model_file, data_file)
+        self.emopic_server = emopic_server
+
+    def infer_emotion(self, img, *args, **kwargs):
+        """从图片中获取情感。
+
+        请求 emopic/emotic 的 EMOPIC_SERVER 服务，获取给定图片的情感。
+        会考虑图片中所有人物 (bbox from yolo)，以图片中人物所占面积比为权重，加权平均。
+
+        :param img: img.filename 图片名 , img.file 图片文件内容
+        :return: Emotion 对象
+        """
+        resp = requests.post(self.emopic_server, files={
+            'img': (img.filename, img.file),
+        })
+        # [{
+        #   "bbox": [65, 15, 190, 186],
+        #   "cat": {"Excitement": 0.16, "Peace": 0.11},
+        #   "cont": [5.97, 6.06, 7.23]
+        # }]
+        emotic_result = resp.json()
+
+        # 总的情感
+        total_emotion = dict.fromkeys(emotext.emotions, 0.0)
+
+        # 人在图片中占的面积
+        area = lambda bbox: (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+        areas = [area(p['bbox']) for p in emotic_result]
+        sum_area = sum(areas)
+
+        # 转成 emotext 情感，面积大的人权重大
+        for person, person_area in zip(emotic_result, areas):
+            person_emo = emotic2dlut(person['cat'], person['cont'])
+            weight = person_area / sum_area
+
+            for emo, value in person_emo.items():
+                total_emotion[emo] += value * weight
+
+        sum_v = sum(v for v in total_emotion.values())
+        for k in total_emotion:
+            total_emotion[k] /= sum_v
+
+        return Emotion(**total_emotion)
+
+    async def handle_http(self, request):
+        data = await request.post()
+
+        img = data['img']
+
+        if not img:
+            raise web.HTTPBadRequest(text=f"post data img is required")
+
+        print(f"POST {request.rel_url}: {img.filename}")
+
+        k = int(request.query.get("k") or 10)
+
+        result = self.recommend(img, k=k)
+        return web.json_response(result)
 
 
 # region cli
@@ -287,10 +352,13 @@ def run_service(args):
     if args.pic:
         assert hasattr(args, 'emopic_server'), (
             '--emopic-server is required by EmotionalPictureRecommenderServer (--pic)')
-        emopic_recommender = EmotionalPictureRecommenderServer(
+        get_emopic_recommender = EmotionalPictureRecommenderGetServer(
+            args.db, args.model, args.data, args.emopic_server)
+        post_emopic_recommender = EmotionalPictureRecommenderPostServer(
             args.db, args.model, args.data, args.emopic_server)
         app.add_routes([
-            web.get('/pic', emopic_recommender.handle_http),
+            web.get('/pic', get_emopic_recommender.handle_http),
+            web.post('/pic', post_emopic_recommender.handle_http),
             web.options('/pic', empty_handler)
         ])
 
