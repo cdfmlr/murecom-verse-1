@@ -178,14 +178,14 @@ class EmotionalRecommendServer(EmotionalRecommendBase, ABC):
 
             if not seed:
                 raise ValueError('Unexpected empty seed.')
+
+            k = int(request.query.get("k") or 10)
+
+            result = self.recommend(seed, k=k)
+            # print(f"RESP {result}")
+            return web.json_response(result)
         except ValueError as e:
             raise web.HTTPBadRequest(text=str(e))
-
-        k = int(request.query.get("k") or 10)
-
-        result = self.recommend(seed, k=k)
-        # print(f"RESP {result}")
-        return web.json_response(result)
 
 
 class EmoTextRecommendServer(EmotionalRecommendServer):
@@ -288,9 +288,14 @@ class GetEmoPicRecommendServer(EmoPicRecommendServer):
 
     def request_emotic(self, seed) -> List[Dict]:
         img_path = seed
-        resp = requests.post(self.emopic_server, files={
-            'img': (img_path, open(img_path, 'rb')),
-        })
+        try:
+            resp = requests.post(self.emopic_server, files={
+                'img': (img_path, open(img_path, 'rb')),
+            })
+        except FileNotFoundError as e:
+            raise ValueError(str(e))
+        if resp.status_code != 200:
+            raise ValueError(resp.text)
         return resp.json()
 
 
@@ -311,6 +316,8 @@ class PostEmoPicRecommendServer(EmoPicRecommendServer):
         resp = requests.post(self.emopic_server, files={
             'img': (img.filename, img.file),
         })
+        if resp.status_code != 200:
+            raise ValueError(resp.text)
         return resp.json()
 
     def seed_to_str(self, seed):
