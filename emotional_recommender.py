@@ -185,6 +185,7 @@ class EmotionalRecommendServer(EmotionalRecommendBase, ABC):
             # print(f"RESP {result}")
             return web.json_response(result)
         except ValueError as e:
+            print(f"    400 Bad Request: {e}")
             raise web.HTTPBadRequest(text=str(e))
 
 
@@ -263,6 +264,8 @@ class EmoPicRecommendServer(EmotionalRecommendServer, ABC):
                 total_emotion[emo] += value * weight
 
         sum_v = sum(v for v in total_emotion.values())
+        if sum_v < 1e-8:
+            raise ValueError('no emotion detected in the image')
         for k in total_emotion:
             total_emotion[k] /= sum_v
 
