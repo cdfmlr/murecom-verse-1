@@ -175,7 +175,7 @@ class EmotionalRecommendTrainer(EmotionalRecommendBase, ABC):
         Persistence.save(self.model, filename)
 
 
-class GoodSongsEmotionalRecommendTrainer(EmotionalRecommendTrainer):
+class GoodSongsTrainer(EmotionalRecommendTrainer):
     MIN_GOOD_SONG_PUBLISH_TIME = 0
     MAX_GOOD_SONG_ID = 10000000
 
@@ -200,6 +200,34 @@ class GoodSongsEmotionalRecommendTrainer(EmotionalRecommendTrainer):
                    filter(self.Track.publish_time > self.MIN_GOOD_SONG_PUBLISH_TIME). \
                    filter(self.Track.id < self.MAX_GOOD_SONG_ID). \
                    order_by(self.Track.pop.desc(), self.Track.publish_time)[:self.datasize]
+
+
+class JoinDatasTrainer(EmotionalRecommendTrainer):
+    """合并一些数据集，组成一个更大的模型。
+
+    要合并的文件会在 CLI 里让用户交互式输入进来。
+    """
+
+    def __init__(self, db, datasize):
+        super().__init__(db, datasize)
+        self.datasets = input(
+            'Please enter datasets\' filenames (e.g. *.data.joblib) to join (sep by ",")\n> '
+        ).split(',')
+        self.datasets = list(map(lambda f: f.strip(), self.datasets))
+        if len(self.datasets) < 1:
+            raise ValueError('No datasets.')
+
+    def query(self, *args, **kwargs) -> Iterable:
+        pass
+
+    def make_data(self):
+        for filename in self.datasets:
+            d = Persistence.load(filename)
+            for tid, emo in zip(d['ids'], d['emo']):
+                if tid in self.data['ids']:
+                    continue
+                self.data['ids'].append(tid)
+                self.data['emo'].append(emo)
 
 
 available_trainers = {c.__name__: c
@@ -511,9 +539,9 @@ def make_parser() -> argparse.ArgumentParser:
     parser_train.add_argument("--save-data", type=str, help="path to save train-set data", required=True)
 
     parser_train.add_argument("--trainer", type=str,
-                              help=f"which trainer to use: {available_trainers.keys()}",
-                              default="GoodSongsEmotionalRecommendTrainer")
-    parser_train.add_argument("--algorithm", type=str, help="nearest neighbors algorithm", default="ball_tree")
+                              help=f"which trainer to use: {available_trainers.keys()}, default: GoodSongsTrainer",
+                              default="GoodSongsTrainer")
+    parser_train.add_argument("--algorithm", type=str, help="nearest neighbors algorithm, default: ball_tree", default="ball_tree")
 
     return parser
 
