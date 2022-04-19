@@ -4,12 +4,14 @@ import json
 import time
 from abc import ABC, abstractmethod
 from collections import namedtuple
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Iterable
 
 import joblib
+import numpy as np
 import requests
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPException
+from sklearn.neighbors import NearestNeighbors
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.automap import automap_base
@@ -18,10 +20,6 @@ import nest_asyncio
 
 import emotext
 from emopic.emotic2emotext import emotic2dlut
-
-# TODO: EmotionalRecommenderTrainer
-# TODO(saved data): json -> joblib
-
 
 # region Emotion
 
@@ -38,6 +36,14 @@ def values(self):
 
 Emotion.keys = keys
 Emotion.values = values
+
+
+def emotion_vector(emotions: List) -> Emotion:
+    elems = dict.fromkeys(emotext.emotions, 0)
+    elems.update({x.emotion: x.intensity for x in emotions})
+    ev = Emotion(**elems)
+
+    return ev
 
 
 def softmax_dict(x: dict):
@@ -74,6 +80,37 @@ def EmotionalRecommendResult(seed_emotion: Emotion, distances: List[float], reco
     }
 
 
+class Persistence(object):
+    """Persistence with joblib
+    """
+
+    @staticmethod
+    def save(obj, filename: str, compress=True):
+        """Save object into filename
+        :param obj: object to save
+        :param filename: pah to saving file
+        :param compress: Optional compression level for the data. 0 or False is
+            no compression. Higher value means more compression, but also slower
+            read and write times. Using a value of 3 is often a good compromise.
+            If compress is True, the compression level used is 3.
+        :return: The list of file names in which the data is stored.
+        """
+        names = joblib.dump(obj, filename, compress=compress)
+        print("saved:", names)
+        return names
+
+    @staticmethod
+    def load(filename: str):
+        """load a saved object
+        :param filename: the saved file
+        :return: object
+        """
+        if filename.endswith('json'):  # legacy
+            with open(filename) as df:
+                return json.load(df)
+        return joblib.load(filename)
+
+
 # endregion data
 
 class EmotionalRecommendBase:
@@ -101,8 +138,72 @@ class EmotionalRecommendBase:
 
 # region trainer
 
-class EmotionalRecommendTrainer(EmotionalRecommendBase):
-    pass
+class EmotionalRecommendTrainer(EmotionalRecommendBase, ABC):
+    def __init__(self, db, datasize: int):
+        super().__init__(db)
+
+        self.data = {'ids': [], 'emo': []}
+        self.model = None
+        self.datasize = datasize
+
+    @abstractmethod
+    def query(self, *args, **kwargs) -> Iterable:
+        """查询数据库，获取数据的具体方法。
+
+        :return: Iterable[self.Track]
+        """
+        raise NotImplemented
+
+    def make_data(self):
+        for t in self.query():
+            assert isinstance(t, self.Track)
+            if not t.track_emotions_collection:
+                continue
+            self.data['ids'].append(t.id)
+            self.data['emo'].append(emotion_vector(t.track_emotions_collection))
+
+    def save_data(self, filename):
+        Persistence.save(self.data, filename)
+
+    def train(self, algorithm='ball_tree'):
+        X = np.array(self.data['emo'])
+        print(f'training on data {X.shape=}')
+        nbrs = NearestNeighbors(n_neighbors=10, algorithm=algorithm).fit(X)
+        self.model = nbrs
+
+    def save_model(self, filename):
+        Persistence.save(self.model, filename)
+
+
+class GoodSongsEmotionalRecommendTrainer(EmotionalRecommendTrainer):
+    MIN_GOOD_SONG_PUBLISH_TIME = 0
+    MAX_GOOD_SONG_ID = 10000000
+
+    def __init__(self, db, datasize):
+        super().__init__(db, datasize)
+
+    def query(self, *args, **kwargs) -> Iterable:
+        """
+        select
+            t.id tid, t.name, t.pop, t.publish_time,
+            array(select a.name from artists a
+                left join track_artists ta
+                on ta.artist_id=a.id
+                where ta.track_id=t.id) artist
+        from tracks t
+        where t.publish_time>0 and t.id<10000000
+        order by t.pop desc, t.publish_time
+        limit {datasize};
+        """
+        return self.db_session. \
+                   query(self.Track). \
+                   filter(self.Track.publish_time > self.MIN_GOOD_SONG_PUBLISH_TIME). \
+                   filter(self.Track.id < self.MAX_GOOD_SONG_ID). \
+                   order_by(self.Track.pop.desc(), self.Track.publish_time)[:self.datasize]
+
+
+available_trainers = {c.__name__: c
+                      for c in EmotionalRecommendTrainer.__subclasses__()}
 
 
 # endregion trainer
@@ -122,9 +223,11 @@ class EmotionalRecommendServer(EmotionalRecommendBase, ABC):
     def __init__(self, db, model_file, data_file):
         super().__init__(db)
 
-        with open(data_file) as df:
-            self.data = json.load(df)
-        self.model = joblib.load(model_file)
+        # with open(data_file) as df:
+        #     self.data = json.load(df)
+        # self.model = joblib.load(model_file)
+        self.model = Persistence.load(model_file)
+        self.data = Persistence.load(data_file)
 
     @abstractmethod
     def parse_seed(self, request: web.Request) -> any:
@@ -383,13 +486,13 @@ def make_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(help="sub commands")
 
     # service
-    parser_service = subparsers.add_parser("service")
+    parser_service = subparsers.add_parser("service", help="start a inferring server on a trained model")
     parser_service.set_defaults(subcommand="service")
 
     parser_service.add_argument("--text", action='store_true', help="start emotext recommending service")
     parser_service.add_argument("--pic", action='store_true', help="start emopic recommending service")
 
-    parser_service.add_argument("--db", type=str, help="path to SQLite database", required=True)
+    parser_service.add_argument("--db", type=str, help="path to PostgreSQL database", required=True)
     parser_service.add_argument("--model", type=str, help="path to a trained model", required=True)
     parser_service.add_argument("--data", type=str, help="path to saved train-set data", required=True)
     parser_service.add_argument("--emopic-server", type=str, help="url to emopic (EMOTIC) server. required by --pic")
@@ -397,9 +500,20 @@ def make_parser() -> argparse.ArgumentParser:
     parser_service.add_argument("--host", type=str, help="server host", default="localhost")
     parser_service.add_argument("--port", type=int, help="listen port", default=8080)
 
-    # train: TODO
-    parser_train = subparsers.add_parser("train", help="TODO")
+    # train
+    parser_train = subparsers.add_parser("train", help="train a new model")
     parser_train.set_defaults(subcommand="train")
+
+    parser_train.add_argument("--db", type=str, help="path to PostgreSQL database", required=True)
+    parser_train.add_argument("--datasize", type=int, help="training data count", required=True)
+
+    parser_train.add_argument("--save-model", type=str, help="path to save trained model", required=True)
+    parser_train.add_argument("--save-data", type=str, help="path to save train-set data", required=True)
+
+    parser_train.add_argument("--trainer", type=str,
+                              help=f"which trainer to use: {available_trainers.keys()}",
+                              default="GoodSongsEmotionalRecommendTrainer")
+    parser_train.add_argument("--algorithm", type=str, help="nearest neighbors algorithm", default="ball_tree")
 
     return parser
 
@@ -432,7 +546,16 @@ def run_service(args):
 
 
 def run_train(args):
-    raise NotImplementedError
+    assert args.trainer in available_trainers, f"no such trainer: {args.trainer}"
+    trainer_class = available_trainers[args.trainer]
+    assert issubclass(trainer_class, EmotionalRecommendTrainer)
+    trainer = trainer_class(args.db, args.datasize)
+
+    trainer.make_data()
+    trainer.train(algorithm=args.algorithm)
+
+    trainer.save_data(args.save_data)
+    trainer.save_model(args.save_model)
 
 
 if __name__ == '__main__':
