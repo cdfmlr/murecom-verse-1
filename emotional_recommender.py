@@ -9,6 +9,7 @@ from typing import List, Optional, Dict
 import joblib
 import requests
 from aiohttp import web
+from aiohttp.web_exceptions import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.automap import automap_base
@@ -336,6 +337,14 @@ class PostEmoPicRecommendServer(EmoPicRecommendServer):
 # region cors
 
 
+CORS_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': '*',
+    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Allow-Credentials': 'true',
+}
+
+
 @web.middleware
 async def cors_middleware(request, handler):
     """用来解决 cors
@@ -345,14 +354,17 @@ async def cors_middleware(request, handler):
     # if request.method == 'OPTIONS':
     #     response = web.Response(text="")
     # else:
-    response = await handler(request)
+    try:
+        response = await handler(request)
 
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = '*'
-    response.headers['Access-Control-Allow-Headers'] = '*'
-    response.headers['Access-Control-Allow-Credentials'] = 'true'
+        for k, v in CORS_HEADERS.items():
+            response.headers[k] = v
 
-    return response
+        return response
+    except HTTPException as e:
+        for k, v in CORS_HEADERS.items():
+            e.headers[k] = v
+        raise e
 
 
 async def empty_handler(request):
