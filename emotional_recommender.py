@@ -64,11 +64,12 @@ def softmax_dict(x: dict):
 
 # region data
 
-def RecommendedTrack(track_id: str, track_name: str, artists: List[str]):
+def RecommendedTrack(track_id: str, track_name: str, artists: List[str], album_cover: str = ''):
     return {
         "track_id": track_id,
         "track_name": track_name,
         "artists": artists,
+        "album_cover": album_cover,
     }
 
 
@@ -290,10 +291,17 @@ class EmotionalRecommendServer(EmotionalRecommendBase, ABC):
             idx = indices[0][i]
             tid = self.data['ids'][idx]
             t = self.get_track_from_db(tid)  # DB Tracks
+
+            artists = list(map(lambda a: a.name, t.artists_collection))
+            albums = t.albums_collection
+            cover = albums[0].pic_url if albums else ''
+
             rt = RecommendedTrack(
                 track_id=f'ncm-{t.id}',
                 track_name=t.name,
-                artists=list(map(lambda a: a.name, t.artists_collection)))
+                artists=artists,
+                album_cover=cover,
+            )
             tracks.append(rt)
 
         result = EmotionalRecommendResult(
@@ -541,7 +549,8 @@ def make_parser() -> argparse.ArgumentParser:
     parser_train.add_argument("--trainer", type=str,
                               help=f"which trainer to use: {available_trainers.keys()}, default: GoodSongsTrainer",
                               default="GoodSongsTrainer")
-    parser_train.add_argument("--algorithm", type=str, help="nearest neighbors algorithm, default: ball_tree", default="ball_tree")
+    parser_train.add_argument("--algorithm", type=str, help="nearest neighbors algorithm, default: ball_tree",
+                              default="ball_tree")
 
     return parser
 
