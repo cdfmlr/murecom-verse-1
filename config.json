@@ -1,0 +1,4 @@
+{
+    "db": "postgresql://用户名@localhost:5432/ncm",
+    "append": true
+}

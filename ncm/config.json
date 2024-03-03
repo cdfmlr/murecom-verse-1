@@ -1,0 +1,26 @@
+{
+    "client": [
+      {
+        "phone": "网易云音乐用户手机号",
+        "password_md5": "网易云音乐用户密码的md5摘要",
+        "server": "http://localhost:3000"
+      }
+    ],
+    "db": "host=localhost user=用户名 dbname=ncm port=5432 sslmode=disable TimeZone=Asia/Shanghai",
+    "task": {
+      "max_playlists": 0,
+      "max_tracks": -1,
+      "playlist_works_timeout_sec": 600,
+      "track_works_timeout_sec": 120
+    },
+    "speed": 100,
+    "sleep_sec_between_tasks": 30,
+    "profile": "",
+    "error_handling": {
+      "sleep_sec": 4,
+      "max_retries": 15
+    },
+    "catalogs": [
+        "", "华语", "流行", "爵士", "古典", "怀旧", "感动", "钢琴"
+    ]
+}
